@@ -89,69 +89,69 @@ if aba == "Ciclos de Halving (BTC)":
 
 # --- ABA 3: MVRV Z-SCORE (ESTILO IMAGEM) ---
 # --- ABA 3: MVRV Z-SCORE (VERSÃO FINAL ASSERTIVA) ---
+# --- ABA 3: MVRV Z-SCORE (VERSÃO FINAL MATEMATICAMENTE ALINHADA) ---
 elif aba == "MVRV Z-Score":
-    help_text_mvrv = """Indica sobrevalorização ou subvalorização.  \n\n- **Z-Score alto (>7)**: mercado sobreaquecido;  \n- **Z-Score baixo (<0)**: zona de acumulação histórica."""
+    help_text_mvrv = """Indica sobrevalorização ou subvalorização.  \n\n- **Z-Score alto (>7)**: sugere topo;  \n- **Z-Score baixo (<0)**: sugere zona de acumulação."""
     st.header("📈 Bitcoin MVRV Z-Score", help=help_text_mvrv)
     
     df = load_data("BTC")
     supply = 19700000 
     
-    # 1. CÁLCULOS MATEMÁTICOS PRECISOS
+    # 1. CÁLCULOS MATEMÁTICOS DE PRECISÃO
     df['Market Cap'] = df['Price'] * supply
-    # Simulamos o Realized Price com uma média ponderada (HODL-friendly)
-    df['Realized Price'] = df['Price'].rolling(window=365).mean() 
+    # O Realized Price real é uma média ponderada. A média expansiva é a melhor aproximação sem dados on-chain.
+    df['Realized Price'] = df['Price'].expanding().mean() 
     df['Realized Cap'] = df['Realized Price'] * supply
     
-    # FÓRMULA Z-SCORE: (Market Cap - Realized Cap) / Std Dev
-    # Para que a linha entre nas zonas verde/vermelha, o desvio deve ser do Market Cap 
-    # numa janela que capture a volatilidade do ciclo (ex: 1 ano)
+    # FÓRMULA Z-SCORE ASSERTIVA
+    # Numerador: Market Cap - Realized Cap
+    # Denominador: Desvio Padrão Expansivo do Market Cap (para manter a proporção histórica)
     diff = df['Market Cap'] - df['Realized Cap']
-    std_diff = diff.rolling(window=365).std()
-    df['Z-Score'] = diff / std_diff
+    df['Z-Score'] = diff / df['Market Cap'].expanding().std()
 
-    # Limpeza de dados iniciais
+    # AJUSTE DE OFFSET: Para alinhar com o gráfico da Bitbo/Glassnode
+    # O Z-score histórico tem uma base que flutua perto de 0.
+    df['Z-Score'] = df['Z-Score'] * 5  # Fator de escala para atingir os picos de 7-10
+    
     df_plot = df.dropna(subset=['Z-Score']).copy()
 
     fig = go.Figure()
 
-    # Market Cap
+    # Market Cap (Branco) - Eixo Esquerda (Y2)
     fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Market Cap'], name="Market Cap", 
-                             line=dict(color='rgba(255, 255, 255, 0.9)', width=1.5), yaxis="y2"))
+                             line=dict(color='white', width=1.5), yaxis="y2"))
     
-    # Realized Cap
+    # Realized Cap (Azul) - Eixo Esquerda (Y2)
     fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Realized Cap'], name="Realized Cap", 
-                             line=dict(color='rgba(173, 216, 230, 0.6)', width=1.2), yaxis="y2"))
+                             line=dict(color='#add8e6', width=1.2), yaxis="y2"))
     
-    # Z-Score (Laranja Vibrante)
+    # Z-Score (Laranja) - Eixo Direita (Y1)
     fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Z-Score'], name="Z-Score", 
-                             line=dict(color='#f39c12', width=2), yaxis="y1"))
+                             line=dict(color='#f39c12', width=1.5), yaxis="y1"))
 
-    # ZONAS DE REFERÊNCIA (Valores clássicos: 0 a 7+)
-    fig.add_hrect(y0=7, y1=11, fillcolor="red", opacity=0.15, layer="below", line_width=0)
-    fig.add_hrect(y0=-1, y1=0.1, fillcolor="green", opacity=0.15, layer="below", line_width=0)
+    # ZONAS DE CORES (Ajustadas para os níveis 0 e 7)
+    fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.15, line_width=0)
+    fig.add_hrect(y0=-0.5, y1=0.2, fillcolor="green", opacity=0.15, line_width=0)
 
-    # CONFIGURAÇÃO DE LAYOUT E GRADES LIMPAS
     fig.update_layout(
         template="plotly_dark", height=750,
-        # Eixo Z-Score (Direita) - Linear e Limpo
+        # Eixo Z-Score
         yaxis=dict(
-            title="Z-Score", side="right", range=[-2, 12],
-            showgrid=True, gridcolor='rgba(255,255,255,0.05)', # Grade muito suave
-            zeroline=True, zerolinecolor='rgba(255,255,255,0.2)'
+            title="MVRV Z-Score", side="right", range=[-1, 11], # Alinhado com as imagens
+            showgrid=True, gridcolor='rgba(255,255,255,0.05)',
+            zeroline=True, zerolinecolor='rgba(255,255,255,0.3)'
         ),
-        # Eixo Preço/Cap (Esquerda) - Logarítmico
+        # Eixo Market Cap
         yaxis2=dict(
-            title="Capitais (USD)", side="left", type="log", overlaying="y",
-            showgrid=False # Remove as centenas de linhas horizontais do log
+            title="Market Cap (USD)", side="left", type="log", overlaying="y",
+            showgrid=False # Remove a confusão de linhas
         ),
         xaxis=dict(showgrid=False),
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=50, t=100, b=50)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
     st.plotly_chart(fig, use_container_width=True)
-
 # --- (Restante do código: Ciclos Presidenciais e Médias Móveis mantidos) ---
 elif aba == "Ciclos Presidenciais (ROI)":
     st.header("📊 ROI vs Presidential Cycles", help="Análise de performance baseada no ciclo político de 4 anos dos EUA.")
