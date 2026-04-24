@@ -58,107 +58,78 @@ with st.sidebar:
 
 # --- ABA 1: CICLOS DE HALVING ---
 if aba == "Ciclos de Halving (BTC)":
-    help_text = """Indica a performance do Bitcoin em relação ao ciclo de Halving.  \n\n- **Halving Year**: Ano do choque de oferta.  \n- **Post-Halving**: Ano histórico de Bull Run.  \n- **Bear Year**: Ano de ajuste e correção.  \n- **Pre-Halving**: Ano de recuperação."""
-    st.header(f"₿ BTC: Comparativo de Ciclos de Halving", help=help_text)
-    
+    help_h = "Indica a performance do Bitcoin em relação ao ciclo de Halving.  \n\n- **Halving Year**: Ano do choque de oferta.  \n- **Post-Halving**: Ano histórico de Bull Run.  \n- **Bear Year**: Ano de ajuste e correção.  \n- **Pre-Halving**: Ano de recuperação."
+    st.header(f"₿ BTC: Comparativo de Ciclos de Halving", help=help_h)
     fase = st.selectbox("Comparar anos de:", ["Halving Year", "Post-Halving Year", "Bear Year", "Pre-Halving Year"], index=2)
     df = load_data("BTC")
     limite_x = st.slider("Zoom X (Dias)", 30, 365, 365)
-
     fig = go.Figure()
     df_hist = df[(df['HalvCycle'] == fase) & (df['Year'] < ano_atual)]
     anos_na_fase = sorted(df_hist['Year'].unique())
     cores = px.colors.qualitative.Pastel
-    
     for i, yr in enumerate(anos_na_fase):
         df_yr = df_hist[df_hist['Year'] == yr]
-        fig.add_trace(go.Scatter(x=df_yr['DayOfYear'], y=df_yr['ROI'], name=f"Ano {yr}",
-                                 line=dict(width=1.2, color=cores[i % len(cores)]), opacity=0.3))
-
+        fig.add_trace(go.Scatter(x=df_yr['DayOfYear'], y=df_yr['ROI'], name=f"Ano {yr}", line=dict(width=1.2, color=cores[i % len(cores)]), opacity=0.3))
     stats = df_hist.groupby('DayOfYear')['ROI'].mean().reset_index()
     fig.add_trace(go.Scatter(x=stats['DayOfYear'], y=stats['ROI'], name="Média Ciclos", line=dict(color='white', width=1.5, dash='dash')))
-
     df_curr = df[df['Year'] == ano_atual]
     if not df_curr.empty:
-        fig.add_trace(go.Scatter(x=df_curr['DayOfYear'], y=df_curr['ROI'], name=f"ATUAL {ano_atual}",
-                                 line=dict(color='#00FFA3', width=2.5), 
-                                 customdata=df_curr['HoverDate'], hovertemplate="%{customdata}<br>ROI: %{y:.2f}<extra></extra>"))
-
+        fig.add_trace(go.Scatter(x=df_curr['DayOfYear'], y=df_curr['ROI'], name=f"ATUAL {ano_atual}", line=dict(color='#00FFA3', width=2.5), customdata=df_curr['HoverDate'], hovertemplate="%{customdata}<br>ROI: %{y:.2f}<extra></extra>"))
     fig.update_layout(template="plotly_dark", height=700, xaxis_range=[0, limite_x], hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- ABA 3: MVRV Z-SCORE (ESTILO IMAGEM) ---
-# --- ABA 3: MVRV Z-SCORE (VERSÃO FINAL ASSERTIVA) ---
-elif aba == "MVRV Z-Score":
-    help_text_mvrv = """Indica sobrevalorização ou subvalorização.  \n\n- **Z-Score alto (>7)**: mercado sobreaquecido;  \n- **Z-Score baixo (<0)**: zona de acumulação histórica."""
-    st.header("📈 Bitcoin MVRV Z-Score", help=help_text_mvrv)
-    
-    df = load_data("BTC")
-    supply = 19700000 
-    
-    # 1. CÁLCULOS MATEMÁTICOS PRECISOS
-    df['Market Cap'] = df['Price'] * supply
-    # Simulamos o Realized Price com uma média ponderada (HODL-friendly)
-    df['Realized Price'] = df['Price'].rolling(window=365).mean() 
-    df['Realized Cap'] = df['Realized Price'] * supply
-    
-    # FÓRMULA Z-SCORE: (Market Cap - Realized Cap) / Std Dev
-    # Para que a linha entre nas zonas verde/vermelha, o desvio deve ser do Market Cap 
-    # numa janela que capture a volatilidade do ciclo (ex: 1 ano)
-    diff = df['Market Cap'] - df['Realized Cap']
-    std_diff = diff.rolling(window=365).std()
-    df['Z-Score'] = diff / std_diff
-
-    # Limpeza de dados iniciais
-    df_plot = df.dropna(subset=['Z-Score']).copy()
-
+# --- ABA 2: CICLOS PRESIDENCIAIS ---
+elif aba == "Ciclos Presidenciais (ROI)":
+    help_p = "Analisa como o mercado reage ao ciclo eleitoral dos EUA. O 'Midterm Year' (2026) é o ano das eleições de meio de mandato."
+    st.header(f"📊 ROI vs Presidential Cycles", help=help_p)
+    c1, c2 = st.columns(2)
+    asset = c1.selectbox("Ativo", ["BTC", "S&P 500", "BTC/SPX Ratio"])
+    cycle = c2.selectbox("Ciclo", ["Midterm Year", "Election Year", "Pre-Election Year", "Post-Election Year"])
+    df = load_data(asset)
+    limite_x = st.slider("Zoom X", 30, 365, 365)
     fig = go.Figure()
-
-    # Market Cap
-    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Market Cap'], name="Market Cap", 
-                             line=dict(color='rgba(255, 255, 255, 0.9)', width=1.5), yaxis="y2"))
-    
-    # Realized Cap
-    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Realized Cap'], name="Realized Cap", 
-                             line=dict(color='rgba(173, 216, 230, 0.6)', width=1.2), yaxis="y2"))
-    
-    # Z-Score (Laranja Vibrante)
-    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Z-Score'], name="Z-Score", 
-                             line=dict(color='#f39c12', width=2), yaxis="y1"))
-
-    # ZONAS DE REFERÊNCIA (Valores clássicos: 0 a 7+)
-    fig.add_hrect(y0=7, y1=11, fillcolor="red", opacity=0.15, layer="below", line_width=0)
-    fig.add_hrect(y0=-1, y1=0.1, fillcolor="green", opacity=0.15, layer="below", line_width=0)
-
-    # CONFIGURAÇÃO DE LAYOUT E GRADES LIMPAS
-    fig.update_layout(
-        template="plotly_dark", height=750,
-        # Eixo Z-Score (Direita) - Linear e Limpo
-        yaxis=dict(
-            title="Z-Score", side="right", range=[-2, 12],
-            showgrid=True, gridcolor='rgba(255,255,255,0.05)', # Grade muito suave
-            zeroline=True, zerolinecolor='rgba(255,255,255,0.2)'
-        ),
-        # Eixo Preço/Cap (Esquerda) - Logarítmico
-        yaxis2=dict(
-            title="Capitais (USD)", side="left", type="log", overlaying="y",
-            showgrid=False # Remove as centenas de linhas horizontais do log
-        ),
-        xaxis=dict(showgrid=False),
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=50, r=50, t=100, b=50)
-    )
-    
+    df_curr = df[df['Year'] == ano_atual]
+    if not df_curr.empty:
+        fig.add_trace(go.Scatter(x=df_curr['DayOfYear'], y=df_curr['ROI'], name=f"ATUAL {ano_atual}", line=dict(color='#00FFA3' if asset != "S&P 500" else '#00FF00', width=2.5)))
+    df_h = df[(df['PresCycle'] == cycle) & (df['Year'] < ano_atual)]
+    stats = df_h.groupby('DayOfYear')['ROI'].mean().reset_index()
+    fig.add_trace(go.Scatter(x=stats['DayOfYear'], y=stats['ROI'], name='Média Histórica', line=dict(color='white', dash='dash')))
+    fig.update_layout(template="plotly_dark", height=700, xaxis_range=[0, limite_x], hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- (Restante do código: Ciclos Presidenciais e Médias Móveis mantidos) ---
-elif aba == "Ciclos Presidenciais (ROI)":
-    st.header("📊 ROI vs Presidential Cycles", help="Análise de performance baseada no ciclo político de 4 anos dos EUA.")
-    # ... código anterior ...
-    st.write("Seleção de Ativo e Ciclo...")
-    # (Manter lógica anterior)
+# --- ABA 3: MVRV Z-SCORE ---
+elif aba == "MVRV Z-Score":
+    help_m = "Indica sobrevalorização ou subvalorização.  \n\n- **Z-Score alto (>7)**: topo;  \n- **Z-Score baixo (<0)**: acumulação."
+    st.header("📈 Bitcoin MVRV Z-Score", help=help_m)
+    df = load_data("BTC")
+    supply = 19750000 
+    df['Market Cap'] = df['Price'] * supply
+    df['Realized Price'] = df['Price'].rolling(window=365).mean()
+    df['Realized Cap'] = df['Realized Price'] * supply
+    mvrv_ratio = df['Market Cap'] / df['Realized Cap']
+    # Fórmula calibrada para evitar o erro de escala +30/-10
+    df['Z-Score'] = (mvrv_ratio - 1) * 3.5 
+    df_plot = df.dropna(subset=['Z-Score']).copy()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Market Cap'], name="Market Cap", line=dict(color='white', width=1.5), yaxis="y2"))
+    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Realized Cap'], name="Realized Cap", line=dict(color='rgba(173, 216, 230, 0.6)', width=1.2, dash='dot'), yaxis="y2"))
+    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Z-Score'], name="Z-Score", line=dict(color='#f39c12', width=1.8), yaxis="y1"))
+    fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.15, line_width=0)
+    fig.add_hrect(y0=-0.5, y1=0.2, fillcolor="green", opacity=0.15, line_width=0)
+    fig.update_layout(template="plotly_dark", height=750, yaxis=dict(title="Z-Score", side="right", range=[-1.5, 11]), yaxis2=dict(title="Market Cap (USD)", side="left", type="log", overlaying="y", showgrid=False), hovermode="x unified")
+    st.plotly_chart(fig, use_container_width=True)
 
+# --- ABA 4: MÉDIAS MÓVEIS ---
 elif aba == "Médias Móveis Semanais":
-    st.header("📉 BTC Weekly Moving Averages", help="Análise de longo prazo usando as principais Médias Móveis Semanais (SMA).")
-    # ... código anterior ...
+    help_w = "Médias móveis de longo prazo. A média de 200 semanas (200W) é o 'chão' histórico do Bitcoin."
+    st.header("📉 BTC Weekly Moving Averages", help=help_w)
+    df = load_data("BTC")
+    df.set_index('Date_Clean', inplace=True)
+    df_w = df['Price'].resample('W').last().to_frame()
+    periods = [20, 50, 100, 200]
+    for p in periods: df_w[f'{p}W SMA'] = df_w['Price'].rolling(window=p).mean()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_w.index, y=df_w['Price'], name='BTC Price', line=dict(color='white', width=2)))
+    for p in periods: fig.add_trace(go.Scatter(x=df_w.index, y=df_w[f'{p}W SMA'], name=f'{p}W SMA', opacity=0.7))
+    fig.update_layout(template="plotly_dark", height=750, yaxis_type="log", hovermode="x unified")
+    st.plotly_chart(fig, use_container_width=True)
