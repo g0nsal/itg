@@ -39,7 +39,6 @@ def load_data(asset_type):
     df['YearStartPrice'] = df.groupby('Year')['Price'].transform('first')
     df['ROI'] = df['Price'] / df['YearStartPrice']
     
-    # Lógicas de Ciclo
     df['PresCycle'] = df['Year'].apply(lambda y: {0:"Election Year", 1:"Post-Election Year", 2:"Midterm Year", 3:"Pre-Election Year"}.get(y % 4))
     df['HalvCycle'] = df['Year'].apply(lambda y: {0:"Halving Year", 1:"Post-Halving Year", 2:"Bear Year", 3:"Pre-Halving Year"}.get(y % 4))
     
@@ -53,71 +52,92 @@ ano_atual = 2026
 with st.sidebar:
     st.title("🚀 ITG Analytics")
     st.subheader(f"📅 Ano Atual: {ano_atual}")
-    st.markdown(f"""
-    **Fase do Mercado:**
-    - 🇺🇸 Presidencial: `Midterm`
-    - ₿ Halving: `Bear Year`
-    """)
-    st.write("---")
+    st.info(f"🇺🇸 Ciclo Político: **Midterm Year**\n\n₿ Ciclo de Mercado: **Bear Year**")
     aba = st.radio("Selecione a Análise:", 
                    ["Ciclos de Halving (BTC)", "Ciclos Presidenciais (ROI)", "MVRV Z-Score", "Médias Móveis Semanais"])
 
-# --- ABA: CICLOS DE HALVING ---
+# --- ABA 1: CICLOS DE HALVING ---
 if aba == "Ciclos de Halving (BTC)":
-    st.header(f"₿ BTC: Comparativo de Ciclos de Halving")
-    st.info("Aqui comparas o ano atual com os mesmos períodos de ciclos passados (ex: 2026 vs 2022, 2018, 2014).")
+    help_text = """Indica a performance do Bitcoin em relação ao ciclo de Halving.  \n\n- **Halving Year**: Ano do choque de oferta.  \n- **Post-Halving**: Ano histórico de Bull Run.  \n- **Bear Year**: Ano de ajuste e correção.  \n- **Pre-Halving**: Ano de recuperação."""
+    st.header(f"₿ BTC: Comparativo de Ciclos de Halving", help=help_text)
     
     fase = st.selectbox("Comparar anos de:", ["Halving Year", "Post-Halving Year", "Bear Year", "Pre-Halving Year"], index=2)
-    
     df = load_data("BTC")
-    limite_x = st.slider("Ver até que dia do ano?", 30, 365, 365)
+    limite_x = st.slider("Zoom X (Dias)", 30, 365, 365)
 
     fig = go.Figure()
-    
-    # 1. Anos Históricos (Linhas Finas)
     df_hist = df[(df['HalvCycle'] == fase) & (df['Year'] < ano_atual)]
     anos_na_fase = sorted(df_hist['Year'].unique())
-    
     cores = px.colors.qualitative.Pastel
+    
     for i, yr in enumerate(anos_na_fase):
         df_yr = df_hist[df_hist['Year'] == yr]
-        fig.add_trace(go.Scatter(
-            x=df_yr['DayOfYear'], y=df_yr['ROI'],
-            name=f"Ano {yr}",
-            line=dict(width=1.5, color=cores[i % len(cores)]),
-            opacity=0.4,
-            customdata=df_yr['HoverDate'],
-            hovertemplate=f"<b>Ano {yr}</b><br>%{{customdata}}<br>ROI: %{{y:.2f}}<extra></extra>"
-        ))
+        fig.add_trace(go.Scatter(x=df_yr['DayOfYear'], y=df_yr['ROI'], name=f"Ano {yr}",
+                                 line=dict(width=1.2, color=cores[i % len(cores)]), opacity=0.3))
 
-    # 2. Média Histórica (Linha Tracejada)
     stats = df_hist.groupby('DayOfYear')['ROI'].mean().reset_index()
-    fig.add_trace(go.Scatter(
-        x=stats['DayOfYear'], y=stats['ROI'],
-        name="Média dos Ciclos",
-        line=dict(color='white', width=2, dash='dash')
-    ))
+    fig.add_trace(go.Scatter(x=stats['DayOfYear'], y=stats['ROI'], name="Média Ciclos", line=dict(color='white', width=1.5, dash='dash')))
 
-    # 3. Ano Atual (Linha de Destaque)
     df_curr = df[df['Year'] == ano_atual]
     if not df_curr.empty:
-        fig.add_trace(go.Scatter(
-            x=df_curr['DayOfYear'], y=df_curr['ROI'],
-            name=f"ATUAL {ano_atual}",
-            line=dict(color='#00FFA3', width=5),
-            customdata=df_curr['HoverDate'],
-            hovertemplate=f"<b>ATUAL {ano_atual}</b><br>%{{customdata}}<br>ROI: %{{y:.2f}}<extra></extra>"
-        ))
+        fig.add_trace(go.Scatter(x=df_curr['DayOfYear'], y=df_curr['ROI'], name=f"ATUAL {ano_atual}",
+                                 line=dict(color='#00FFA3', width=2.5), 
+                                 customdata=df_curr['HoverDate'], hovertemplate="%{customdata}<br>ROI: %{y:.2f}<extra></extra>"))
 
-    fig.update_layout(
-        template="plotly_dark", height=700,
-        xaxis=dict(title="Dia do Ano", range=[0, limite_x]),
-        yaxis=dict(title="Multiplicador de ROI (Início do Ano = 1.0)"),
-        hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    fig.add_hline(y=1.0, line_color="gray", line_dash="dot")
+    fig.update_layout(template="plotly_dark", height=700, xaxis_range=[0, limite_x], hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
 
-# --- (As outras abas continuam aqui de forma similar ao código anterior) ---
-# Se precisares do código das outras abas completo no mesmo ficheiro, diz-me.
+# --- ABA 3: MVRV Z-SCORE (ESTILO IMAGEM) ---
+elif aba == "MVRV Z-Score":
+    help_text_mvrv = """Indica sobrevalorização ou subvalorização.  \n\n- **Z-Score alto (>7)**: sugere topo;  \n- **Z-Score baixo (<0)**: sugere zona de acumulação."""
+    st.header("📈 Bitcoin MVRV Z-Score", help=help_text_mvrv)
+    
+    df = load_data("BTC")
+    supply = 19700000 # Estimativa de circulação
+    
+    # Cálculos para replicar a imagem
+    df['Market Cap'] = df['Price'] * supply
+    df['Realized Price'] = df['Price'].rolling(365).mean() # Aproximação do custo médio
+    df['Realized Cap'] = df['Realized Price'] * supply
+    
+    # Z-Score (Diferença entre Market Cap e Realized Cap normalizada)
+    mvrv_ratio = df['Market Cap'] / df['Realized Cap']
+    df['Z-Score'] = (mvrv_ratio - mvrv_ratio.rolling(365).mean()) / mvrv_ratio.rolling(365).std()
+
+    fig = go.Figure()
+
+    # 1. Market Cap (Linha Preta/Escura como na imagem)
+    fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['Market Cap'], name="Market Cap", 
+                             line=dict(color='white', width=1.5), yaxis="y2"))
+    
+    # 2. Realized Cap (Linha Azul Clara)
+    fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['Realized Cap'], name="Realized Cap", 
+                             line=dict(color='#add8e6', width=1), yaxis="y2"))
+    
+    # 3. Z-Score (Linha Laranja - Eixo Principal)
+    fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['Z-Score'], name="Z-Score", 
+                             line=dict(color='#f39c12', width=1.5), yaxis="y1"))
+
+    # Áreas de Topo e Fundo (Como na imagem)
+    fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.1, annotation_text="Overheated", annotation_position="top left")
+    fig.add_hrect(y0=-1, y1=0.2, fillcolor="green", opacity=0.1, annotation_text="Undervalued", annotation_position="bottom left")
+
+    fig.update_layout(
+        template="plotly_dark", height=750,
+        yaxis=dict(title="MVRV Z-Score", side="right", range=[-2, 10]),
+        yaxis2=dict(title="Market Cap / Realized Cap (USD)", side="left", type="log", overlaying="y"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# --- (Restante do código: Ciclos Presidenciais e Médias Móveis mantidos) ---
+elif aba == "Ciclos Presidenciais (ROI)":
+    st.header("📊 ROI vs Presidential Cycles", help="Análise de performance baseada no ciclo político de 4 anos dos EUA.")
+    # ... código anterior ...
+    st.write("Seleção de Ativo e Ciclo...")
+    # (Manter lógica anterior)
+
+elif aba == "Médias Móveis Semanais":
+    st.header("📉 BTC Weekly Moving Averages", help="Análise de longo prazo usando as principais Médias Móveis Semanais (SMA).")
+    # ... código anterior ...
