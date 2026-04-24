@@ -20,10 +20,16 @@ def load_data(asset_type):
     df['Date_Clean'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
     df = df[~((df['Date_Clean'].dt.month == 2) & (df['Date_Clean'].dt.day == 29))]
     
+    # Criar colunas temporais logo no carregamento para evitar KeyErrors
     df['Year'] = df['Date_Clean'].dt.year
+    df['Month'] = df['Date_Clean'].dt.month
+    df['Quarter'] = df['Date_Clean'].dt.quarter
+    
     df['DayOfYear'] = df.groupby('Year').cumcount() + 1
     df['YearStartPrice'] = df.groupby('Year')['Price'].transform('first')
     df['ROI'] = df['Price'] / df['YearStartPrice']
+    
+    # Lógica de Ciclos
     df['HalvCycle'] = df['Year'].apply(lambda y: {0:"Halving Year", 1:"Post-Halving Year", 2:"Bear Year", 3:"Pre-Halving Year"}.get(y % 4))
     df['PresCycle'] = df['Year'].apply(lambda y: {0:"Election Year", 1:"Post-Election Year", 2:"Midterm Year", 3:"Pre-Election Year"}.get(y % 4))
     
@@ -40,89 +46,73 @@ with st.sidebar:
     aba = st.radio("Selecione a Análise:", 
                    ["Sazonalidade (Heatmap)", "Ciclos de Halving (BTC)", "Ciclos Presidenciais (ROI)", "MVRV Z-Score", "Médias Móveis Semanais"])
 
-# --- ABA: SAZONALIDADE (HEATMAP PROFISSIONAL) ---
+# --- ABA: SAZONALIDADE (HEATMAP) ---
 if aba == "Sazonalidade (Heatmap)":
-    st.header("📅 Bitcoin Seasonality Returns", help="Retornos históricos. Verde para positivo, Vermelho para negativo.")
+    st.header("📅 Bitcoin Seasonality Returns", help="Verde: Positivo | Vermelho: Negativo. Baseado no preço de fecho mensal/trimestral.")
     
     df_raw = load_data("BTC")
     c1, c2 = st.columns(2)
     view_mode = c1.selectbox("Frequência", ["Monthly Returns (%)", "Quarterly Returns (%)"])
     cycle_filter = c2.selectbox("Filtrar por Ciclo de Halving", ["Todos os Anos", "Halving Year", "Post-Halving Year", "Bear Year", "Pre-Halving Year"])
     
-    df_h = df_raw.copy()
+    # Filtragem por ciclo
     if cycle_filter != "Todos os Anos":
-        df_h = df_h[df_h['HalvCycle'] == cycle_filter]
-        
-    if "Monthly" in view_mode:
-        df_h['Month'] = df_h['Date_Clean'].dt.month
-        pivot_df = df_h.groupby(['Year', 'Month'])['Price'].last().unstack()
-        pivot_df = pivot_df.pct_change(axis=1) * 100
-        # Corrigir Janeiro comparando com Dezembro do ano anterior
-        all_prices = df_raw.groupby(['Year', 'Month'])['Price'].last().unstack()
-        for yr in pivot_df.index:
-            if yr-1 in all_prices.index:
-                pivot_df.at[yr, 1] = ((all_prices.at[yr, 1] / all_prices.at[yr-1, 12]) - 1) * 100
-        cols = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        pivot_df.columns = cols
+        years_to_keep = df_raw[df_raw['HalvCycle'] == cycle_filter]['Year'].unique()
+        df_h = df_raw[df_raw['Year'].isin(years_to_keep)].copy()
     else:
-        df_h['Quarter'] = df_h['Date_Clean'].dt.quarter
+        df_h = df_raw.copy()
+
+    if "Monthly" in view_mode:
+        pivot_df = df_h.groupby(['Year', 'Month'])['Price'].last().unstack()
+        # Cálculo de retorno mensal (incluindo a correção de Janeiro)
+        all_m_prices = df_raw.groupby(['Year', 'Month'])['Price'].last().unstack()
+        returns_df = pivot_df.pct_change(axis=1) * 100
+        for yr in returns_df.index:
+            if yr-1 in all_m_prices.index:
+                returns_df.at[yr, 1] = ((all_m_prices.at[yr, 1] / all_m_prices.at[yr-1, 12]) - 1) * 100
+        cols = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        returns_df.columns = cols
+    else:
         pivot_df = df_h.groupby(['Year', 'Quarter'])['Price'].last().unstack()
-        pivot_df = pivot_df.pct_change(axis=1) * 100
         all_q_prices = df_raw.groupby(['Year', 'Quarter'])['Price'].last().unstack()
-        for yr in pivot_df.index:
+        returns_df = pivot_df.pct_change(axis=1) * 100
+        for yr in returns_df.index:
             if yr-1 in all_q_prices.index:
-                pivot_df.at[yr, 1] = ((all_q_prices.at[yr, 1] / all_q_prices.at[yr-1, 4]) - 1) * 100
+                returns_df.at[yr, 1] = ((all_q_prices.at[yr, 1] / all_q_prices.at[yr-1, 4]) - 1) * 100
         cols = ['Q1', 'Q2', 'Q3', 'Q4']
-        pivot_df.columns = cols
+        returns_df.columns = cols
 
-    # Cálculos Stats
-    avg = pivot_df.mean()
-    med = pivot_df.median()
+    # Stats
+    avg = returns_df.mean()
+    med = returns_df.median()
     
-    # Preparar dados para a Tabela Plotly (Estilo Bitbo)
-    years = pivot_df.index.astype(str).tolist()[::-1]
-    rows = [years + ["Average", "Median"]]
+    # Construção da Tabela
+    years = [str(y) for y in returns_df.index.tolist()[::-1]]
+    header_values = ["<b>Time</b>"] + list(returns_df.columns)
     
-    header_values = ["<b>Year</b>"] + list(pivot_df.columns)
-    
-    cell_values = [rows[0]] # Primeira coluna é o ano
-    cell_colors = [["#1e2127"] * len(rows[0])] # Cor da coluna de anos
-    text_colors = [["white"] * len(rows[0])]
+    cell_values = [years + ["<b>Average</b>", "<b>Median</b>"]]
+    cell_colors = [["#1e2127"] * (len(years) + 2)]
+    text_colors = [["white"] * (len(years) + 2)]
 
-    for col in pivot_df.columns:
-        col_data = pivot_df[col].tolist()[::-1]
-        col_avg = avg[col]
-        col_med = med[col]
+    for col in returns_df.columns:
+        col_data = returns_df[col].tolist()[::-1]
+        vals = col_data + [avg[col], med[col]]
+        cell_values.append([f"{v:+.2f}%" if pd.notnull(v) else "-" for v in vals])
         
-        vals = col_data + [col_avg, col_med]
-        formatted_vals = [f"{v:+.2f}%" if pd.notnull(v) else "-" for v in vals]
-        cell_values.append(formatted_vals)
-        
-        # Lógica de Cores
         colors = []
-        t_colors = []
         for i, v in enumerate(vals):
-            if i >= len(vals) - 2: # Média e Mediana
-                colors.append("#333a41")
-                t_colors.append("white")
-            elif pd.isnull(v):
-                colors.append("#0e1117")
-                t_colors.append("gray")
-            elif v > 0:
-                colors.append("#26a69a") # Verde Bitbo
-                t_colors.append("white")
-            else:
-                colors.append("#ef5350") # Vermelho Bitbo
-                t_colors.append("white")
+            if i >= len(vals) - 2: colors.append("#333a41") # Stats
+            elif pd.isnull(v): colors.append("#0e1117")
+            elif v > 0: colors.append("#26a69a") # Verde
+            else: colors.append("#ef5350") # Vermelho
         cell_colors.append(colors)
-        text_colors.append(t_colors)
+        text_colors.append(["white"] * len(vals))
 
     fig = go.Figure(data=[go.Table(
         header=dict(values=header_values, fill_color='#1e2127', align='center', font=dict(color='white', size=14)),
-        cells=dict(values=cell_values, fill_color=cell_colors, align='center', font=dict(color=text_colors, size=13), height=30)
+        cells=dict(values=cell_values, fill_color=cell_colors, align='center', font=dict(color='white', size=13), height=30)
     )])
-    
-    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=35 * len(rows[0]) + 100)
+    fig.update_layout(margin=dict(l=0, r=0, t=10, b=10), height=400 + (len(years) * 30))
     st.plotly_chart(fig, use_container_width=True)
 
 # --- ABA: CICLOS DE HALVING ---
@@ -134,13 +124,13 @@ elif aba == "Ciclos de Halving (BTC)":
     df_hist = df[(df['HalvCycle'] == fase) & (df['Year'] < ano_atual)]
     for yr in sorted(df_hist['Year'].unique()):
         df_yr = df_hist[df_hist['Year'] == yr]
-        fig.add_trace(go.Scatter(x=df_yr['DayOfYear'], y=df_yr['ROI'], name=str(yr), line=dict(width=1), opacity=0.3))
+        fig.add_trace(go.Scatter(x=df_yr['DayOfYear'], y=df_yr['ROI'], name=str(yr), line=dict(width=1.2), opacity=0.4))
     stats = df_hist.groupby('DayOfYear')['ROI'].mean().reset_index()
     fig.add_trace(go.Scatter(x=stats['DayOfYear'], y=stats['ROI'], name="Média", line=dict(color='white', dash='dash')))
     df_curr = df[df['Year'] == ano_atual]
     if not df_curr.empty:
-        fig.add_trace(go.Scatter(x=df_curr['DayOfYear'], y=df_curr['ROI'], name=f"ATUAL {ano_atual}", line=dict(color='#00FFA3', width=2.5)))
-    fig.update_layout(template="plotly_dark", height=700, hovermode="x unified")
+        fig.add_trace(go.Scatter(x=df_curr['DayOfYear'], y=df_curr['ROI'], name=f"2026", line=dict(color='#00FFA3', width=3)))
+    fig.update_layout(template="plotly_dark", height=700)
     st.plotly_chart(fig, use_container_width=True)
 
 # --- ABA: MVRV Z-SCORE ---
@@ -154,7 +144,7 @@ elif aba == "MVRV Z-Score":
     df['Z_Calib'] = (df['Z'] * 2.5) + 0.5
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['MC'], name="Market Cap", line=dict(color='white'), yaxis="y2"))
-    fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['RC'], name="Realized Cap", line=dict(color='rgba(173,216,230,0.6)', dash='dot'), yaxis="y2"))
+    fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['RC'], name="Realized Cap", line=dict(color='#3498db', dash='dot'), yaxis="y2"))
     fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['Z_Calib'], name="Z-Score", line=dict(color='#f39c12'), yaxis="y1"))
     fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.15)
     fig.add_hrect(y0=-0.5, y1=0.2, fillcolor="green", opacity=0.15)
@@ -170,7 +160,7 @@ elif aba == "Ciclos Presidenciais (ROI)":
     fig = go.Figure()
     df_curr = df[df['Year'] == ano_atual]
     if not df_curr.empty:
-        fig.add_trace(go.Scatter(x=df_curr['DayOfYear'], y=df_curr['ROI'], name=f"ATUAL {ano_atual}", line=dict(color='#00FFA3', width=2.5)))
+        fig.add_trace(go.Scatter(x=df_curr['DayOfYear'], y=df_curr['ROI'], name=f"2026", line=dict(color='#00FFA3', width=3)))
     df_h = df[(df['PresCycle'] == cycle) & (df['Year'] < ano_atual)]
     stats = df_h.groupby('DayOfYear')['ROI'].mean().reset_index()
     fig.add_trace(go.Scatter(x=stats['DayOfYear'], y=stats['ROI'], name='Média', line=dict(color='white', dash='dash')))
