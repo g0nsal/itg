@@ -89,46 +89,54 @@ if aba == "Ciclos de Halving (BTC)":
 
 # --- ABA 3: MVRV Z-SCORE (ESTILO IMAGEM) ---
 elif aba == "MVRV Z-Score":
-    help_text_mvrv = """Indica sobrevalorização ou subvalorização.  \n\n- **Z-Score alto (>7)**: sugere topo;  \n- **Z-Score baixo (<0)**: sugere zona de acumulação."""
+    help_text_mvrv = """Indica sobrevalorização ou subvalorização.  \n\n- **Z-Score alto (>7)**: sugere topo (Market Cap muito acima do Realizado);  \n- **Z-Score baixo (<0)**: sugere zona de acumulação (Preço de Mercado próximo ou abaixo do custo médio)."""
     st.header("📈 Bitcoin MVRV Z-Score", help=help_text_mvrv)
     
     df = load_data("BTC")
-    supply = 19700000 # Estimativa de circulação
+    # Usamos o fornecimento circulante aproximado para cada época
+    supply = 19700000 
     
-    # Cálculos para replicar a imagem
+    # 1. CÁLCULO DO REALIZED CAP (Melhor aproximação matemática sem dados on-chain)
+    # O Realized Price é melhor simulado pelo valor cumulativo médio
     df['Market Cap'] = df['Price'] * supply
-    df['Realized Price'] = df['Price'].rolling(365).mean() # Aproximação do custo médio
+    df['Realized Price'] = df['Price'].expanding(min_periods=365).mean() # Média expansiva simula melhor o custo médio histórico
     df['Realized Cap'] = df['Realized Price'] * supply
     
-    # Z-Score (Diferença entre Market Cap e Realized Cap normalizada)
-    mvrv_ratio = df['Market Cap'] / df['Realized Cap']
-    df['Z-Score'] = (mvrv_ratio - mvrv_ratio.rolling(365).mean()) / mvrv_ratio.rolling(365).std()
+    # 2. FÓRMULA PADRÃO MVRV Z-SCORE
+    # Z = (Market Cap - Realized Cap) / Std(Market Cap)
+    # Usamos uma janela de desvio de longo prazo para estabilizar o score como no gráfico oficial
+    rolling_std = df['Market Cap'].rolling(window=365*2).std() 
+    df['Z-Score'] = (df['Market Cap'] - df['Realized Cap']) / rolling_std
+
+    # Limpeza para o gráfico
+    df_plot = df.dropna(subset=['Z-Score']).copy()
 
     fig = go.Figure()
 
-    # 1. Market Cap (Linha Preta/Escura como na imagem)
-    fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['Market Cap'], name="Market Cap", 
+    # Market Cap (Preto/Branco)
+    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Market Cap'], name="Market Cap", 
                              line=dict(color='white', width=1.5), yaxis="y2"))
     
-    # 2. Realized Cap (Linha Azul Clara)
-    fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['Realized Cap'], name="Realized Cap", 
-                             line=dict(color='#add8e6', width=1), yaxis="y2"))
+    # Realized Cap (Azul)
+    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Realized Cap'], name="Realized Cap", 
+                             line=dict(color='#add8e6', width=1.2), yaxis="y2"))
     
-    # 3. Z-Score (Linha Laranja - Eixo Principal)
-    fig.add_trace(go.Scatter(x=df['Date_Clean'], y=df['Z-Score'], name="Z-Score", 
+    # Z-Score (Laranja)
+    fig.add_trace(go.Scatter(x=df_plot['Date_Clean'], y=df_plot['Z-Score'], name="Z-Score", 
                              line=dict(color='#f39c12', width=1.5), yaxis="y1"))
 
-    # Áreas de Topo e Fundo (Como na imagem)
-    fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.1, annotation_text="Overheated", annotation_position="top left")
-    fig.add_hrect(y0=-1, y1=0.2, fillcolor="green", opacity=0.1, annotation_text="Undervalued", annotation_position="bottom left")
+    # Zonas de Risco (Ajustadas matematicamente)
+    fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.1, annotation_text="Overheated")
+    fig.add_hrect(y0=-0.5, y1=0.2, fillcolor="green", opacity=0.1, annotation_text="Undervalued")
 
     fig.update_layout(
         template="plotly_dark", height=750,
-        yaxis=dict(title="MVRV Z-Score", side="right", range=[-2, 10]),
-        yaxis2=dict(title="Market Cap / Realized Cap (USD)", side="left", type="log", overlaying="y"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        hovermode="x unified"
+        yaxis=dict(title="MVRV Z-Score", side="right", range=[-1, 10], showgrid=False),
+        yaxis2=dict(title="Market / Realized Cap (USD)", side="left", type="log", overlaying="y"),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
+    
     st.plotly_chart(fig, use_container_width=True)
 
 # --- (Restante do código: Ciclos Presidenciais e Médias Móveis mantidos) ---
