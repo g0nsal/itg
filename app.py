@@ -163,4 +163,29 @@ elif aba == "MVRV Z-Score":
     df_mvrv['Z_Calib'] = (df_mvrv['Z'] * 2.5) + 0.5
     
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_mvrv['Date_Clean'], y=df_mvrv['MC
+    fig.add_trace(go.Scatter(x=df_mvrv['Date_Clean'], y=df_mvrv['MC'], name="Market Cap", line=dict(color='white'), yaxis="y2"))
+    fig.add_trace(go.Scatter(x=df_mvrv['Date_Clean'], y=df_mvrv['RC'], name="Realized Cap", line=dict(color='#3498db', dash='dot'), yaxis="y2"))
+    fig.add_trace(go.Scatter(x=df_mvrv['Date_Clean'], y=df_mvrv['Z_Calib'], name="Z-Score", line=dict(color='#f39c12'), yaxis="y1"))
+    fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.15)
+    fig.add_hrect(y0=-0.5, y1=0.2, fillcolor="green", opacity=0.15)
+    fig.update_layout(template="plotly_dark", height=750, paper_bgcolor='rgba(0,0,0,0)', 
+                      yaxis=dict(title="Z-Score", side="right", range=[-1.5, 11]), 
+                      yaxis2=dict(type="log", overlaying="y", side="left", showgrid=False))
+    st.plotly_chart(fig, use_container_width=True)
+
+# --- ABA 4: MÉDIAS MÓVEIS ---
+elif aba == "Médias Móveis":
+    st.header("📉 Weekly Moving Averages")
+    asset_name = st.selectbox("Ativo", ["Bitcoin (BTC)", "Ethereum (ETH)", "S&P 500"])
+    ticker = "BTC-USD" if "Bitcoin" in asset_name else ("ETH-USD" if "Ethereum" in asset_name else "^GSPC")
+    df_ma = load_raw_data(ticker).set_index('Date_Clean')
+    df_w = df_ma['Price'].resample('W').last().to_frame()
+    for p in [20, 50, 100, 200]: 
+        df_w[f'{p} SMA'] = df_w['Price'].rolling(window=p).mean()
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_w.index, y=df_w['Price'], name='Price', line=dict(color='white')))
+    for p in [20, 50, 100, 200]: 
+        fig.add_trace(go.Scatter(x=df_w.index, y=df_w[f'{p} SMA'], name=f'{p} SMA', opacity=0.7))
+    fig.update_layout(template="plotly_dark", height=750, yaxis_type="log", paper_bgcolor='rgba(0,0,0,0)')
+    st.plotly_chart(fig, use_container_width=True)
