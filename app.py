@@ -198,7 +198,6 @@ AVERAGE/MEDIAN no final ajudam a identificar vieses sazonais."""
     all_prices = df_main.groupby(["Year", group_key])["Price"].last().unstack()
     returns_df = pivot_df.pct_change(axis=1) * 100
 
-    # LINHA CORRIGIDA: Cálculo direto e linear para evitar quebras de parênteses no interpretador
     last_col = 12 if is_monthly else 4
     for yr in returns_df.index:
         if yr - 1 in all_prices.index:
@@ -296,12 +295,11 @@ A linha verde sólida representa o ano corrente."""
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 3: RISK METRIC & DYNAMIC DCA ---
+# --- ABA 3: RISK METRIC (VERSÃO FINAL ATUALIZADA 2026) ---
 elif aba == "Risk Metric (DCA)":
-    help_risk = """Métrica de risco de 0 a 1 inspirada no Into The Cryptoverse (Benjamin Cowen).  \n
-Abaixo de 0.5: Zona de acumulação e compras estratégicas (DCA In).  \n
-Acima de 0.5: Zona de distribuição e realização de lucros (DCA Out)."""
-    st.header("📊 Asset Risk Metric & Dynamic DCA Simulator", help=help_risk)
+    help_risk = """Métrica de risco macro de 0 a 1 calibrada com base na atualização do modelo de Benjamin Cowen de 2026.  \n
+Implementa a nova 'Banda de Inação/Aguardar' (0.3 a 0.6) para mitigar falsos ressaltos de curto prazo."""
+    st.header("📊 Into The Cryptoverse Risk Metric & Dynamic DCA", help=help_risk)
     
     asset_name = st.selectbox("Selecione o Ativo para Análise de Risco", ["Bitcoin (BTC)", "Ethereum (ETH)"])
     df_risk = load_data(asset_name)
@@ -309,6 +307,7 @@ Acima de 0.5: Zona de distribuição e realização de lucros (DCA Out)."""
     if df_risk.empty:
         st.stop()
         
+    # 1. CÁLCULO DA ENGINE QUANT
     df_risk['SMA_140'] = df_risk['Price'].rolling(140).mean()
     df_risk['Dev_SMA'] = np.log(df_risk['Price'] / df_risk['SMA_140'])
     
@@ -328,39 +327,48 @@ Acima de 0.5: Zona de distribuição e realização de lucros (DCA Out)."""
     current_price = current_row['Price']
     current_risk = current_row['Risk']
     
-    if current_risk >= 0.8: zone_desc, zone_color, mult = "Distribuição Máxima 🔴", "#ef4444", 0.0
-    elif current_risk >= 0.6: zone_desc, zone_color, mult = "DCA Out Ativo (Vender) 🟠", "#f59e0b", 0.0
-    elif current_risk >= 0.5: zone_desc, zone_color, mult = "Zona Neutra / Alerta 🟡", "#eab308", 0.5
-    elif current_risk >= 0.4: zone_desc, zone_color, mult = "Zona Neutra / Acumulação ⚪", "#94a3b8", 1.0
-    elif current_risk >= 0.2: zone_desc, zone_color, mult = "DCA In Ativo (Comprar) 🟢", "#10b981", 1.5
-    else: zone_desc, zone_color, mult = "Acumulação Pesada 💎", "#059669", 2.5
+    # 2. NOVA LOGICA ATUALIZADA DO VÍDEO (NO-TRADE GREY REGION & FRACTIONS)
+    # Acumulação baseada no limite estrito de 0.3 para este ciclo
+    if current_risk >= 0.9:
+        zone_desc, zone_color, action_html = "Distribuição Crítica (Vender 1/3) 🔴", "#ef4444", "Vender <b>5/15 (33.3%)</b> da posição de BTC"
+    elif current_risk >= 0.8:
+        zone_desc, zone_color, action_html = "DCA Out Agressivo (Vender) 🔴", "#f87171", "Vender <b>4/15</b> da posição de BTC"
+    elif current_risk >= 0.7:
+        zone_desc, zone_color, action_html = "DCA Out Moderado (Vender) 🟠", "#f59e0b", "Vender <b>3/15</b> da posição de BTC"
+    elif current_risk >= 0.6:
+        zone_desc, zone_color, action_html = "DCA Out Inicial (Vender) 🟠", "#fb923c", "Vender <b>2/15</b> ou <b>1/15</b> da posição de BTC"
+    elif current_risk >= 0.3:
+        # A famigerada zona cinzenta onde ele "não faz absolutamente nada"
+        zone_desc, zone_color, action_html = "Zona Cinzenta (Aguardar / No-Trade) ⚪", "#94a3b8", "<b>Hold Estrito</b>. Sem compras nem vendas. Preservar Pólvora Seca."
+    elif current_risk >= 0.2:
+        zone_desc, zone_color, action_html = "DCA In Ativo (Comprar) 🟢", "#4ade80", "Multiplicador <b>1x</b> do Investimento Semanal Padrão"
+    elif current_risk >= 0.1:
+        zone_desc, zone_color, action_html = "DCA In Intenso (Comprar) 🟢", "#10b981", "Multiplicador <b>2x</b> ou <b>3x</b> do Investimento Semanal Padrão"
+    else:
+        zone_desc, zone_color, action_html = "Acumulação Máxima / Fundo de Ciclo 💎", "#059669", "Multiplicador <b>Substancial (4x ou mais)</b> / Capitulação por tempo"
         
     cd1, cd2, cd3 = st.columns(3)
     with cd1:
         st.markdown(f'<div class="stat-card">Preço Atual ({asset_name})<div class="stat-val">${current_price:,.2f}</div></div>', unsafe_allow_html=True)
     with cd2:
-        st.markdown(f'<div class="stat-card">Métrica de Risco<div class="stat-val" style="color: {zone_color};">{current_risk:.4f}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-card">Métrica de Risco (ITC)<div class="stat-val" style="color: {zone_color};">{current_risk:.4f}</div></div>', unsafe_allow_html=True)
     with cd3:
-        st.markdown(f'<div class="stat-card">Estado do Mercado<div class="stat-val" style="color: {zone_color};">{zone_desc}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-card">Estratégia do Ciclo<div class="stat-val" style="color: {zone_color};">{zone_desc}</div></div>', unsafe_allow_html=True)
         
     st.markdown("---")
     
-    st.subheader("🧮 Simulador de Compras Dinâmicas (Budget Allocation)")
-    cc1, cc2 = st.columns(2)
-    budget_total = cc1.number_input("Budget Inicial Total (€)", min_value=100, max_value=1000000, value=5000, step=500)
-    total_parts = cc2.number_input("Número de Parcelas Desejadas (Semanas/Meses)", min_value=4, max_value=104, value=20, step=1)
-    
-    base_tranche = budget_total / total_parts
-    dynamic_buy = base_tranche * mult
+    # 3. INTERFACE DE DYNAMIC DCA TOTALMENTE RECALIBRADA PELO VÍDEO
+    st.subheader("🧮 Simulador de Ordens e Gestão de Tranches (Benjamin's Rules)")
     
     st.markdown(f"""
     <div style="background-color: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 25px;">
-        <h4>📋 Plano de Ação para este Período:</h4>
-        <ul>
-            <li>O teu investimento base padrão por parcela é de: <b>{base_tranche:,.2f} €</b></li>
-            <li>Multiplicador atual aplicado pelo Risco (x{mult}): <b style="color:{zone_color};">{mult}x</b></li>
-            <li><b>Valor a investir AGORA: <span style="font-size:20px; color:#00FFA3;">{dynamic_buy:,.2f} €</span></b></li>
-        </ul>
+        <h4>📋 Diretiva do Modelo de Risco para Hoje:</h4>
+        <p style="font-size: 16px; margin-top: 5px;">
+            Ação Recomendada: <span style="font-size: 18px; color: {zone_color};">{action_html}</span>
+        </p>
+        <p style="font-size: 13px; color: #94a3b8; margin-top: 5px;">
+            <i>💡 Análise Macro de 2026: Tal como o Ben explicou, o mercado está a mimetizar a apatia de 2019. Se o preço estiver na zona cinzenta, a estratégia matemática correta é não fazer compras emocionais e aguardar a janela sazonal de capitulação lateral (frequentemente com fundo em Outubro).</i>
+        </p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -368,10 +376,10 @@ Acima de 0.5: Zona de distribuição e realização de lucros (DCA Out)."""
     fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Price'], name="Preço (USD)", line=dict(color='rgba(255,255,255,0.15)', width=1), yaxis="y2"))
     fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Risk'], name="Risk Metric", line=dict(color='#3b82f6', width=2), yaxis="y1"))
     
-    fig.add_hrect(y0=0.0, y1=0.2, fillcolor="green", opacity=0.12, layer="below", line_width=0)
-    fig.add_hrect(y0=0.2, y1=0.4, fillcolor="green", opacity=0.04, layer="below", line_width=0)
-    fig.add_hrect(y0=0.6, y1=0.8, fillcolor="red", opacity=0.04, layer="below", line_width=0)
-    fig.add_hrect(y0=0.8, y1=1.0, fillcolor="red", opacity=0.12, layer="below", line_width=0)
+    # Desenho das Bandas Ajustadas do Novo Modelo
+    fig.add_hrect(y0=0.0, y1=0.3, fillcolor="green", opacity=0.08, layer="below", line_width=0, annotation_text="DCA Accumulation (<0.3)", annotation_position="bottom left")
+    fig.add_hrect(y0=0.3, y1=0.6, fillcolor="gray", opacity=0.12, layer="below", line_width=0, annotation_text="Grey Region (Do Nothing)", annotation_position="middle left")
+    fig.add_hrect(y0=0.6, y1=1.0, fillcolor="red", opacity=0.08, layer="below", line_width=0, annotation_text="DCA Distribution (>0.6)", annotation_position="top left")
     
     fig.update_layout(
         template="plotly_dark", height=600, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
