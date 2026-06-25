@@ -300,7 +300,7 @@ A linha verde sólida representa o ano corrente."""
         )
 
     # Média histórica
-    stats = df_hist.groupby("DayOfYear")["ROI'].mean().reset_index()
+    stats = df_hist.groupby("DayOfYear")["ROI"].mean().reset_index()
     fig.add_trace(
         go.Scatter(
             x=stats["DayOfYear"],
