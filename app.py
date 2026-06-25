@@ -366,4 +366,79 @@ Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos hist
             x=df_mvrv["Date_Clean"],
             y=df_mvrv["MC"],
             name="Market Cap",
-            line=dict(
+            line=dict(color="white"),
+            yaxis="y2",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df_mvrv["Date_Clean"],
+            y=df_mvrv["RC"],
+            name="Realized Cap (aprox.)",
+            line=dict(color="#3498db", dash="dot"),
+            yaxis="y2",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df_mvrv["Date_Clean"],
+            y=df_mvrv["Z_Calib"],
+            name="Z-Score (calibrado)",
+            line=dict(color="#f39c12"),
+            yaxis="y1",
+        )
+    )
+    fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.15, annotation_text="Sobrecomprado", annotation_position="top left")
+    fig.add_hrect(y0=-0.5, y1=0.2, fillcolor="green", opacity=0.15, annotation_text="Subvalorizado", annotation_position="bottom left")
+    fig.update_layout(
+        template="plotly_dark",
+        height=750,
+        paper_bgcolor="rgba(0,0,0,0)",
+        yaxis=dict(title="Z-Score", side="right", range=[-1.5, 11]),
+        yaxis2=dict(type="log", overlaying="y", side="left", showgrid=False, title="Capitalização (USD)"),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# --- ABA 4: MÉDIAS MÓVEIS ---
+elif aba == "Médias Móveis":
+    help_ma = "Médias móveis de longo prazo em escala logarítmica. A linha de 200 SMA funciona historicamente como um forte suporte de mercado."
+    st.header("📉 Weekly Moving Averages", help=help_ma)
+    asset_name = st.selectbox("Ativo", list(ASSET_TICKERS.keys()))
+
+    df_ma = load_data(asset_name)
+    if df_ma.empty:
+        st.stop()
+
+    df_w = df_ma.set_index("Date_Clean")["Price"].resample("W").last().to_frame()
+
+    MA_PERIODS = [20, 50, 100, 200]
+    MA_COLORS = ["#3b82f6", "#f59e0b", "#ec4899", "#a855f7"]
+
+    for p in MA_PERIODS:
+        df_w[f"{p} SMA"] = df_w["Price"].rolling(window=p).mean()
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_w.index, y=df_w['Price'], name="Preço", line=dict(color="white", width=1.5)))
+    for p, color in zip(MA_PERIODS, MA_COLORS):
+        fig.add_trace(
+            go.Scatter(
+                x=df_w.index,
+                y=df_w[f"{p} SMA"],
+                name=f"{p} SMA",
+                line=dict(color=color),
+                opacity=0.8,
+                
+            )
+        )
+
+    fig.update_layout(
+        template="plotly_dark",
+        height=750,
+        yaxis_type="log",
+        yaxis_title="Preço (log)",
+        xaxis_title="Data",
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig, use_container_width=True)
