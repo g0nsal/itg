@@ -270,15 +270,14 @@ A linha verde sólida representa o ano corrente."""
     asset_name = c1.selectbox("Ativo", list(ASSET_TICKERS.keys()))
 
     is_sp500 = asset_name == "S&P 500"
+    col_c = "PresCycle" if is_sp500 else "HalvCycle"
+    
     if is_sp500:
         ciclo = c2.selectbox("Ciclo Político", list(PRES_MAP.values()))
-        col_c = "PresCycle"
-        df_cycle = load_data(asset_name)
     else:
         ciclo = c2.selectbox("Ciclo Halving", list(HALV_MAP.values()))
-        col_c = "HalvCycle"
-        df_cycle = load_data(asset_name)
 
+    df_cycle = load_data(asset_name)
     if df_cycle.empty:
         st.stop()
 
@@ -301,7 +300,7 @@ A linha verde sólida representa o ano corrente."""
         )
 
     # Média histórica
-    stats = df_hist.groupby("DayOfYear")["ROI"].mean().reset_index()
+    stats = df_hist.groupby("DayOfYear")["ROI'].mean().reset_index()
     fig.add_trace(
         go.Scatter(
             x=stats["DayOfYear"],
@@ -311,7 +310,7 @@ A linha verde sólida representa o ano corrente."""
         )
     )
 
-    # Ano atual
+    # Year current
     df_curr = df_cycle[df_cycle["Year"] == ano_atual]
     if not df_curr.empty:
         fig.add_trace(
@@ -427,8 +426,7 @@ elif aba == "Médias Móveis":
                 y=df_w[f"{p} SMA"],
                 name=f"{p} SMA",
                 line=dict(color=color),
-                opacity=0.8,
-                
+                opacity=0.8
             )
         )
 
