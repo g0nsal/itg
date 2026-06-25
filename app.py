@@ -155,7 +155,7 @@ with st.sidebar:
     )
     aba = st.radio(
         "Selecione a Análise:",
-        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "MVRV Z-Score", "Médias Móveis"],
+        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Risk Metric (DCA)", "MVRV Z-Score", "Médias Móveis"],
     )
 
 
@@ -310,7 +310,7 @@ A linha verde sólida representa o ano corrente."""
         )
     )
 
-    # Year current
+    # Ano atual
     df_curr = df_cycle[df_cycle["Year"] == ano_atual]
     if not df_curr.empty:
         fig.add_trace(
@@ -336,16 +336,80 @@ A linha verde sólida representa o ano corrente."""
     st.plotly_chart(fig, use_container_width=True)
 
 
+# --- ABA: RISK METRIC (BENJAMIN COWEN INSPIRED) ---
+elif aba == "Risk Metric (DCA)":
+    help_risk = """Métrica de risco de 0 a 1 inspirada no Into The Cryptoverse (Benjamin Cowen).  \n
+Combina o desvio da média móvel semanal com a linha de regressão de preço justo (Fair Value).  \n
+Abaixo de 0.5: Compras dinâmicas (DCA In).  \n
+Acima de 0.5: Realização de lucros (DCA Out)."""
+    st.header("📊 Asset Risk Metric (Dynamic DCA)", help=help_risk)
+    
+    asset_name = st.selectbox("Selecione o Ativo para Análise de Risco", ["Bitcoin (BTC)", "Ethereum (ETH)"])
+    df_risk = load_data(asset_name)
+    
+    if not df_risk.empty:
+        # 1. Componente de Média Móvel (Equivalente à 20-Week SMA -> 140 dias)
+        df_risk['SMA_140'] = df_risk['Price'].rolling(140).mean()
+        df_risk['Dev_SMA'] = np.log(df_risk['Price'] / df_risk['SMA_140'])
+        
+        # 2. Componente de Log Regressão (Fair Value baseado no índice do histórico)
+        df_risk['Time_Index'] = np.arange(len(df_risk)) + 1
+        # Modelo matemático simplificado para simular a banda logarítmica estável de suporte
+        df_risk['Fair_Value_Log'] = np.log(df_risk['Time_Index']) * 1.8
+        df_risk['Dev_Fair'] = np.log(df_risk['Price']) - df_risk['Fair_Value_Log']
+        
+        # 3. Combinação e Escalonamento MinMax (Normalização Pura de 0 a 1)
+        raw_risk = df_risk['Dev_SMA'].fillna(0) * 0.5 + df_risk['Dev_Fair'].fillna(0) * 0.5
+        
+        min_r = raw_risk.expanding().min()
+        max_r = raw_risk.expanding().max()
+        df_risk['Risk'] = (raw_risk - min_r) / (max_r - min_r)
+        
+        # Ajuste fino para limpar os primeiros meses com poucos dados
+        df_risk = df_risk.dropna(subset=['SMA_140']).copy()
+        
+        # Plot do Gráfico com Múltiplos Eixos
+        fig = go.Figure()
+        
+        # Preço (Linha de fundo discreta)
+        fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Price'], name="Preço (USD)",
+                                 line=dict(color='rgba(255,255,255,0.2)', width=1), yaxis="y2"))
+        
+        # Linha de Risco Dinâmica (Colorida por zonas via Plotly)
+        fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Risk'], name="Risk Metric",
+                                 line=dict(color='#3b82f6', width=2), yaxis="y1"))
+        
+        # Adicionar as bandas horizontais de risco clássicas (0.2, 0.4, 0.6, 0.8)
+        colors_risk = ["rgba(16, 185, 129, 0.1)", "rgba(16, 185, 129, 0.05)", 
+                       "rgba(239, 68, 68, 0.05)", "rgba(239, 68, 68, 0.15)"]
+        
+        fig.add_hrect(y0=0.0, y1=0.2, fillcolor="green", opacity=0.15, layer="below", line_width=0, annotation_text="Acumulação Pesada")
+        fig.add_hrect(y0=0.2, y1=0.4, fillcolor="green", opacity=0.05, layer="below", line_width=0)
+        fig.add_hrect(y0=0.6, y1=0.8, fillcolor="red", opacity=0.05, layer="below", line_width=0)
+        fig.add_hrect(y0=0.8, y1=1.0, fillcolor="red", opacity=0.15, layer="below", line_width=0, annotation_text="Distribuição Máxima")
+        
+        fig.update_layout(
+            template="plotly_dark",
+            height=750,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            yaxis=dict(title="Risk Level (0 - 1)", side="right", range=[0, 1], showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
+            yaxis2=dict(type="log", overlaying="y", side="left", showgrid=False, title="Preço (USD)"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+
 # --- ABA 3: MVRV Z-SCORE ---
 elif aba == "MVRV Z-Score":
     help_mvrv = """Mete em perspetiva a sobrevalorização ou subvalorização do Bitcoin.  \n
 Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos históricos de acumulação."""
-    st.header("📈 Bitcoin MVRV Z-Score (On-Chain Aproximado)", help=help_mvrv)
+    st.header("📈 Bitcoin MVRV Z-Score (On-Chain Approximado)", help=help_mvrv)
 
     st.info(
         "⚠️ O Z-Score aqui é uma **aproximação** calculada com preços públicos e supply estimado. "
         "Para dados on-chain reais, consulta [Glassnode](https://glassnode.com) ou [LookIntoBitcoin](https://www.lookintobitcoin.com).",
-        icon="ℹ️",
+        status="info",
     )
 
     df_mvrv = load_data("Bitcoin (BTC)")
