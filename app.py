@@ -297,7 +297,7 @@ A linha verde sólida representa o ano corrente."""
 
 # --- ABA 3: RISK METRIC & BIFASIC DYNAMIC DCA ---
 elif aba == "Risk Metric (DCA)":
-    help_risk = """Métrica de risco macro de 0 a 1 calibrada de acordo com as especificações oficiais do Into The Cryptoverse (2026).  \n
+    help_risk = """Métrica de risco de 0 a 1 inspirada no Into The Cryptoverse (Benjamin Cowen).  \n
 Abaixo de 0.3: Zona de Acumulação e Dynamic DCA In.  \n
 Entre 0.3 e 0.6: Zona Cinzenta (Banda de Inação de Longo Prazo).  \n
 Acima de 0.6: Distribuição Fracionada em 15 avos (DCA Out)."""
@@ -428,7 +428,7 @@ Acima de 0.6: Distribuição Fracionada em 15 avos (DCA Out)."""
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- NOVA ABA 4: CYCLE REPEAT (BITBO STYLE) ---
+# --- ABA 4: CYCLE REPEAT (REVISADA - CRITICAL UX FIX) ---
 elif aba == "Cycle Repeat (Bitbo)":
     help_repeat = """Esta ferramenta replica as variações percentuais diárias dos últimos 1458 dias (um ciclo completo de 4 anos) 
 e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do ativo."""
@@ -440,83 +440,96 @@ e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do a
     if df_rep.empty:
         st.stop()
         
-    # Ordenar por data cronológica para cálculos seguros de médias móveis
     df_rep = df_rep.sort_values('Date_Clean').reset_index(drop=True)
     
-    # 1. Calcular indicadores técnicos históricos (200 MA e 1458 MA)
-    df_rep['200_MA'] = df_rep['Price'].rolling(200).mean()
-    df_rep['1458_MA'] = df_rep['Price'].rolling(1458).mean()
+    # CRÍTICO: Mantemos apenas a 200 DMA (Médio Prazo) e a 200 WMA (Suporte de Ciclo Real).
+    # Removemos a 1458 DMA por ser redundante e coincidir matematicamente com a 200 WMA.
+    df_rep['200_DMA'] = df_rep['Price'].rolling(200).mean()
     
-    # Separar os dados do histórico real
+    # Cálculo robusto da 200 WMA
+    df_raw_w = df_rep.set_index('Date_Clean').resample('W').last()
+    df_raw_w['200_WMA'] = df_raw_w['Price'].rolling(200).mean()
+    df_rep = df_rep.merge(df_raw_w['200_WMA'].reset_index(), on='Date_Clean', how='left').ffill()
+    
     ultimo_preco_real = df_rep['Price'].iloc[-1]
     ultima_data_real = df_rep['Date_Clean'].iloc[-1]
     
-    # 2. CAPTURAR OS RETORNOS DOS ÚLTIMOS 1458 DIAS
+    # 2. CAPTURAR OS RETORNOS DO ÚLTIMO CICLO (1458 DIAS)
     DIAS_CICLO = 1458
     df_janela = df_rep.iloc[-DIAS_CICLO:].copy()
     retornos_historicos = df_janela['Price'].pct_change().dropna().values
     
-    # 3. CONSTRUIR O VETOR DE PROJEÇÃO FUTURA
+    # 3. PROJEÇÃO FUTURA CUMULATIVA
     precos_projetados = [ultimo_preco_real]
     for r in retornos_historicos:
         proximo_preco = precos_projetados[-1] * (1 + r)
         precos_projetados.append(proximo_preco)
         
-    # Criar o índice de datas futuras
     datas_futuras = [ultima_data_real + timedelta(days=i) for i in range(len(precos_projetados))]
     
-    # DataFrame da Projeção
     df_proj = pd.DataFrame({
         'Date_Clean': datas_futuras,
         'Price_Proj': precos_projetados
     })
     
-    # Calcular as MAs projetadas para dar continuidade às linhas
+    # 4. CONSTRUÇÃO DO VETOR COMBINADO PARA AS MÉDIAS MÓVEIS TÁTICAS
     all_prices_combined = np.concatenate([df_rep['Price'].values, precos_projetados[1:]])
-    combined_200 = pd.Series(all_prices_combined).rolling(200).mean().values
-    combined_1458 = pd.Series(all_prices_combined).rolling(1458).mean().values
     
-    # Injetar os blocos de MAs futuras nos respetivos DataFrames
-    df_rep['200_MA_Comb'] = combined_200[:len(df_rep)]
-    df_rep['1458_MA_Comb'] = combined_1458[:len(df_rep)]
+    # Vetor 200 DMA Combinado
+    combined_200d = pd.Series(all_prices_combined).rolling(200).mean().values
     
-    df_proj['200_MA_Comb'] = combined_200[len(df_rep)-1:]
-    df_proj['1458_MA_Comb'] = combined_1458[len(df_rep)-1:]
+    # Vetor 200 WMA Combinado
+    valores_semanais_futuros = pd.DataFrame({'Price': precos_projetados}, index=datas_futuras).resample('W').last()['Price'].values
+    all_weekly_combined = np.concatenate([df_raw_w['Price'].values, valores_semanais_futuros[1:]])
+    combined_200w_raw = pd.Series(all_weekly_combined).rolling(200).mean().values
     
-    # RENDERING DO GRÁFICO PLOTLY INTERATIVO
+    df_total_datas = pd.DataFrame({'Date_Clean': df_rep['Date_Clean'].tolist() + datas_futuras[1:]})
+    df_weekly_bridge = pd.DataFrame({
+        'Date_Clean': df_raw_w.index.tolist() + pd.DataFrame({'Price': precos_projetados}, index=datas_futuras).resample('W').last().index.tolist()[1:],
+        '200_WMA_Comb': combined_200w_raw
+    })
+    df_total_datas = df_total_datas.merge(df_weekly_bridge, on='Date_Clean', how='left').ffill()
+    
+    df_rep['200_DMA_Comb'] = combined_200d[:len(df_rep)]
+    df_rep['200_WMA_Comb'] = df_total_datas['200_WMA_Comb'].iloc[:len(df_rep)].values
+    
+    df_proj['200_DMA_Comb'] = combined_200d[len(df_rep)-1:]
+    df_proj['200_WMA_Comb'] = df_total_datas['200_WMA_Comb'].iloc[len(df_rep)-1:].values
+    
+    # RENDERING GRÁFICO (UX LIMPA E TOTALMENTE FUNCIONAL)
     fig = go.Figure()
     
-    # Traço 1: Histórico Real (Últimos 3 anos para foco visual)
+    # Histórico Real (Foco nos últimos 1000 dias)
     df_visual_hist = df_rep[df_rep['Date_Clean'] >= (ultima_data_real - timedelta(days=1000))]
     fig.add_trace(go.Scatter(
         x=df_visual_hist['Date_Clean'], y=df_visual_hist['Price'],
         name="Histórico Real (USD)", line=dict(color="#f8fafc", width=2)
     ))
     
-    # Traço 2: Projeção Teórica Repetida (Próximos 4 anos)
+    # Projeção Teórica Repetida (Próximos 1458 dias)
     fig.add_trace(go.Scatter(
         x=df_proj['Date_Clean'], y=df_proj['Price_Proj'],
-        name="Projeção Recorrente (Próximos 1458 dias)",
+        name="Projeção Recorrente",
         line=dict(color="#38bdf8", width=2, dash="dash")
     ))
     
-    # Traço 3: 200-Day Moving Average (Disponível para ocultar ao clique)
+    # Média 1: 200-Day DMA (Tendência Intermédia)
     fig.add_trace(go.Scatter(
         x=df_visual_hist['Date_Clean'].tolist() + df_proj['Date_Clean'].tolist()[1:],
-        y=df_rep['200_MA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['200_MA_Comb'].tolist()[1:],
-        name="200-Day MA", line=dict(color="#f59e0b", width=1.2), opacity=0.7
+        y=df_rep['200_DMA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['200_DMA_Comb'].tolist()[1:],
+        name="200-Day DMA", line=dict(color="#f59e0b", width=1.2), opacity=0.6
     ))
     
-    # Traço 4: 1458-Day Moving Average (Filtro Macro Ocultável)
+    # Média 2: 200-Week WMA (A âncora macro e proporcional)
     fig.add_trace(go.Scatter(
         x=df_visual_hist['Date_Clean'].tolist() + df_proj['Date_Clean'].tolist()[1:],
-        y=df_rep['1458_MA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['1458_MA_Comb'].tolist()[1:],
-        name="1458-Day MA (Ciclo)", line=dict(color="#ec4899", width=1.5), opacity=0.7
+        y=df_rep['200_WMA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['200_WMA_Comb'].tolist()[1:],
+        name="200-Week WMA", line=dict(color="#00FFA3", width=1.6), opacity=0.8
     ))
     
     fig.update_layout(
         template="plotly_dark", height=700, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis_type="log", yaxis_title="Preço (Escala Logarítmica USD)", xaxis_title="Eixo Temporal (Histórico + Projeção)",
+        yaxis_type="log", yaxis_title="Preço (Escala Logarítmica USD)", xaxis_title="Linha do Tempo (Ciclo Atual + Projeção)",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         hovermode="x unified"
     )
@@ -562,7 +575,7 @@ Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos hist
 
 # --- ABA 5: MÉDIAS MÓVEIS ---
 elif aba == "Médias Móveis":
-    help_ma = "Médias móveis de longo prazo em escala logarítmica. A linha de 200 SMA funciona historically como um forte suporte de mercado."
+    help_ma = "Médias móveis de longo prazo em escala logarítmica. A linha de 200 SMA funciona historicamente como um forte suporte de mercado."
     st.header("📉 Weekly Moving Averages", help=help_ma)
     asset_name = st.selectbox("Ativo", list(ASSET_TICKERS.keys()))
 
