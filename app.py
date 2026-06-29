@@ -154,7 +154,7 @@ with st.sidebar:
     )
     aba = st.radio(
         "Selecione a Análise:",
-        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Risk Metric (DCA)", "MVRV Z-Score", "Médias Móveis"],
+        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "MVRV Z-Score", "Médias Móveis"],
     )
 
 
@@ -295,7 +295,7 @@ A linha verde sólida representa o ano corrente."""
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 3: RISK METRIC & BIFASIC DYNAMIC DCA (CORRIGIDA) ---
+# --- ABA 3: RISK METRIC & BIFASIC DYNAMIC DCA ---
 elif aba == "Risk Metric (DCA)":
     help_risk = """Métrica de risco macro de 0 a 1 calibrada de acordo com as especificações oficiais do Into The Cryptoverse (2026).  \n
 Abaixo de 0.3: Zona de Acumulação e Dynamic DCA In.  \n
@@ -428,6 +428,101 @@ Acima de 0.6: Distribuição Fracionada em 15 avos (DCA Out)."""
     st.plotly_chart(fig, use_container_width=True)
 
 
+# --- NOVA ABA 4: CYCLE REPEAT (BITBO STYLE) ---
+elif aba == "Cycle Repeat (Bitbo)":
+    help_repeat = """Esta ferramenta replica as variações percentuais diárias dos últimos 1458 dias (um ciclo completo de 4 anos) 
+e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do ativo."""
+    st.header("🔄 Cycle Repeat & Trajectory Projection", help=help_repeat)
+    
+    asset_name = st.selectbox("Selecione o Ativo para Projeção", ["Bitcoin (BTC)", "Ethereum (ETH)"])
+    df_rep = load_data(asset_name)
+    
+    if df_rep.empty:
+        st.stop()
+        
+    # Ordenar por data cronológica para cálculos seguros de médias móveis
+    df_rep = df_rep.sort_values('Date_Clean').reset_index(drop=True)
+    
+    # 1. Calcular indicadores técnicos históricos (200 MA e 1458 MA)
+    df_rep['200_MA'] = df_rep['Price'].rolling(200).mean()
+    df_rep['1458_MA'] = df_rep['Price'].rolling(1458).mean()
+    
+    # Separar os dados do histórico real
+    ultimo_preco_real = df_rep['Price'].iloc[-1]
+    ultima_data_real = df_rep['Date_Clean'].iloc[-1]
+    
+    # 2. CAPTURAR OS RETORNOS DOS ÚLTIMOS 1458 DIAS
+    DIAS_CICLO = 1458
+    df_janela = df_rep.iloc[-DIAS_CICLO:].copy()
+    retornos_historicos = df_janela['Price'].pct_change().dropna().values
+    
+    # 3. CONSTRUIR O VETOR DE PROJEÇÃO FUTURA
+    precos_projetados = [ultimo_preco_real]
+    for r in retornos_historicos:
+        proximo_preco = precos_projetados[-1] * (1 + r)
+        precos_projetados.append(proximo_preco)
+        
+    # Criar o índice de datas futuras
+    datas_futuras = [ultima_data_real + timedelta(days=i) for i in range(len(precos_projetados))]
+    
+    # DataFrame da Projeção
+    df_proj = pd.DataFrame({
+        'Date_Clean': datas_futuras,
+        'Price_Proj': precos_projetados
+    })
+    
+    # Calcular as MAs projetadas para dar continuidade às linhas
+    all_prices_combined = np.concatenate([df_rep['Price'].values, precos_projetados[1:]])
+    combined_200 = pd.Series(all_prices_combined).rolling(200).mean().values
+    combined_1458 = pd.Series(all_prices_combined).rolling(1458).mean().values
+    
+    # Injetar os blocos de MAs futuras nos respetivos DataFrames
+    df_rep['200_MA_Comb'] = combined_200[:len(df_rep)]
+    df_rep['1458_MA_Comb'] = combined_1458[:len(df_rep)]
+    
+    df_proj['200_MA_Comb'] = combined_200[len(df_rep)-1:]
+    df_proj['1458_MA_Comb'] = combined_1458[len(df_rep)-1:]
+    
+    # RENDERING DO GRÁFICO PLOTLY INTERATIVO
+    fig = go.Figure()
+    
+    # Traço 1: Histórico Real (Últimos 3 anos para foco visual)
+    df_visual_hist = df_rep[df_rep['Date_Clean'] >= (ultima_data_real - timedelta(days=1000))]
+    fig.add_trace(go.Scatter(
+        x=df_visual_hist['Date_Clean'], y=df_visual_hist['Price'],
+        name="Histórico Real (USD)", line=dict(color="#f8fafc", width=2)
+    ))
+    
+    # Traço 2: Projeção Teórica Repetida (Próximos 4 anos)
+    fig.add_trace(go.Scatter(
+        x=df_proj['Date_Clean'], y=df_proj['Price_Proj'],
+        name="Projeção Recorrente (Próximos 1458 dias)",
+        line=dict(color="#38bdf8", width=2, dash="dash")
+    ))
+    
+    # Traço 3: 200-Day Moving Average (Disponível para ocultar ao clique)
+    fig.add_trace(go.Scatter(
+        x=df_visual_hist['Date_Clean'].tolist() + df_proj['Date_Clean'].tolist()[1:],
+        y=df_rep['200_MA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['200_MA_Comb'].tolist()[1:],
+        name="200-Day MA", line=dict(color="#f59e0b", width=1.2), opacity=0.7
+    ))
+    
+    # Traço 4: 1458-Day Moving Average (Filtro Macro Ocultável)
+    fig.add_trace(go.Scatter(
+        x=df_visual_hist['Date_Clean'].tolist() + df_proj['Date_Clean'].tolist()[1:],
+        y=df_rep['1458_MA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['1458_MA_Comb'].tolist()[1:],
+        name="1458-Day MA (Ciclo)", line=dict(color="#ec4899", width=1.5), opacity=0.7
+    ))
+    
+    fig.update_layout(
+        template="plotly_dark", height=700, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis_type="log", yaxis_title="Preço (Escala Logarítmica USD)", xaxis_title="Eixo Temporal (Histórico + Projeção)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
 # --- ABA 4: MVRV Z-SCORE ---
 elif aba == "MVRV Z-Score":
     help_mvrv = """Mete em perspetiva a sobrevalorização ou subvalorização do Bitcoin.  \n
@@ -467,7 +562,7 @@ Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos hist
 
 # --- ABA 5: MÉDIAS MÓVEIS ---
 elif aba == "Médias Móveis":
-    help_ma = "Médias móveis de longo prazo em escala logarítmica. A linha de 200 SMA funciona historicamente como um forte suporte de mercado."
+    help_ma = "Médias móveis de longo prazo em escala logarítmica. A linha de 200 SMA funciona historically como um forte suporte de mercado."
     st.header("📉 Weekly Moving Averages", help=help_ma)
     asset_name = st.selectbox("Ativo", list(ASSET_TICKERS.keys()))
 
