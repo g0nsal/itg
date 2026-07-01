@@ -546,7 +546,7 @@ Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos hist
     df_mvrv["Supply"] = df_mvrv["Date_Clean"].apply(supply_btc_aproximado)
     df_mvrv["MC"] = df_mvrv["Price"] * df_mvrv["Supply"]
     df_mvrv["RC"] = df_mvrv["Price"].rolling(365).mean() * df_mvrv["Supply"]
-    df_mrvv["Z"] = (df_mvrv["MC"] - df_mvrv["RC"]) / (df_mvrv["MC"].rolling(365).std())
+    df_mvrv["Z"] = (df_mvrv["MC"] - df_mvrv["RC"]) / (df_mvrv["MC"].rolling(365).std())
     df_mvrv["Z_Calib"] = (df_mvrv["Z"] * 2.5) + 0.5
 
     fig = go.Figure()
