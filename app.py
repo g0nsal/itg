@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import plotly.graph_objects as go
+import plotly.graph_objects go
 from datetime import datetime, timedelta
 
 # --- 1. CONFIGURAÇÃO E CONSTANTES ---
@@ -518,11 +518,11 @@ e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do a
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 5: RAINBOW RIBBON (SMART) ---
+# --- ABA 5: RAINBOW RIBBON (TRUE BEN COWEN SYSTEM WITH CLASSIC CHROMATIC SPECTRUM) ---
 elif aba == "Rainbow Ribbon (Smart)":
-    help_rb = """Arco-Íris de Médias Móveis de Momentum macro.  \n
-Melhorado com os conceitos de suporte e resistência do Benjamin Cowen, ancorando a faixa central na lendária 20W SMA."""
-    st.header("🌈 Structural Rainbow Moving Average Ribbon", help=help_rb)
+    help_rb = """Arco-Íris de Médias Móveis de Momentum macro. \n
+Ancorado matematicamente na 20W SMA multiplicada por bandas de extensão harmónicas com o espectro cromático clássico."""
+    st.header("🌈 Into The Cryptoverse Smart Rainbow Ribbon", help=help_rb)
     
     asset_name = st.selectbox("Selecione o Ativo para o Arco-Íris", list(ASSET_TICKERS.keys()))
     df_rb = load_data(asset_name)
@@ -532,33 +532,36 @@ Melhorado com os conceitos de suporte e resistência do Benjamin Cowen, ancorand
         
     df_rb = df_rb.sort_values('Date_Clean').reset_index(drop=True)
     
-    df_rb['20D_DMA'] = df_rb['Price'].rolling(20).mean()
-    df_rb['50D_DMA'] = df_rb['Price'].rolling(50).mean()
-    df_rb['100_DMA'] = df_rb['Price'].rolling(100).mean()
-    df_rb['140D_DMA_20W'] = df_rb['Price'].rolling(140).mean()
-    df_rb['200_DMA'] = df_rb['Price'].rolling(200).mean()
+    # Gerar a 20W SMA Dinâmica base (140 dias diários)
+    df_rb['20W_SMA_Daily'] = df_rb['Price'].rolling(140).mean()
     
-    df_raw_w = df_rb.set_index('Date_Clean').resample('W').last()
-    df_raw_w['200_WMA'] = df_raw_w['Price'].rolling(200).mean()
-    df_rb = df_rb.merge(df_raw_w['200_WMA'].reset_index(), on='Date_Clean', how='left')
-    df_rb['200_WMA'] = df_rb['200_WMA'].ffill()
+    # Criar canais harmónicos do Arco-Íris Clássico (Multiplicadores baseados nos quantis de risco do Ben)
+    df_rb['Band_Red_Max'] = df_rb['20W_SMA_Daily'] * 3.5          # Risco 0.9 (Preço Esticado / Topo)
+    df_rb['Band_Orange_Sell'] = df_rb['20W_SMA_Daily'] * 2.4      # Risco 0.7 (Zona de Venda / DCA Out)
+    df_rb['Band_Yellow_Alert'] = df_rb['20W_SMA_Daily'] * 1.6     # Risco 0.5 (Teto de Valor Justo)
+    df_rb['Band_Green_Buy'] = df_rb['20W_SMA_Daily'] * 1.0        # Risco 0.3 (A 20W SMA Pura - Gatilho do Ben)
+    df_rb['Band_Blue_Floor'] = df_rb['20W_SMA_Daily'] * 0.75       # Risco 0.2 (Zona de Acumulação Ativa)
+    df_rb['Band_Violet_Bottom'] = df_rb['20W_SMA_Daily'] * 0.55   # Risco 0.1 (Suporte Geracional Extremo)
     
     ultima_dt = df_rb['Date_Clean'].iloc[-1]
     df_visual = df_rb[df_rb['Date_Clean'] >= (ultima_dt - timedelta(days=1200))]
     
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Price'], name="Price (USD)", line=dict(color="#f8fafc", width=2.5)))
     
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['20D_DMA'], name="20D DMA (Short Momentum)", line=dict(color="#ff0055", width=1.2), opacity=0.6))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['50D_DMA'], name="50D DMA (Trend)", line=dict(color="#ff7700", width=1.2), opacity=0.6))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['100_DMA'], name="100D DMA (Trend)", line=dict(color="#ffcc00", width=1.2), opacity=0.6))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['140D_DMA_20W'], name="140D DMA (Ben's 20W SMA)", line=dict(color="#00ffcc", width=2.2)))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['200_DMA'], name="200D DMA (Macro)", line=dict(color="#0066ff", width=1.2), opacity=0.6))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['200_WMA'], name="200W WMA (Generational Support)", line=dict(color="#9900ff", width=2.0), opacity=0.9))
+    # Desenhar as bandas com o espectro de cores clássico do arco-íris (Red -> Violet)
+    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Red_Max'], name="0.9 Risk (Maximum Bubble Territory)", line=dict(color="#ef4444", width=1.5)))
+    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Orange_Sell'], name="0.7 Risk (DCA Out Layer)", line=dict(color="#f97316", width=1.5)))
+    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Yellow_Alert'], name="0.5 Risk (Overheating Aler)", line=dict(color="#eab308", width=1.5)))
+    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Green_Buy'], name="0.3 Risk (Ben's Buy Trigger / 20W SMA)", line=dict(color="#22c55e", width=2.5)))
+    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Blue_Floor'], name="0.2 Risk (Accumulation Layer)", line=dict(color="#3b82f6", width=1.5)))
+    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Violet_Bottom'], name="0.1 Risk (Generational Bottom)", line=dict(color="#8b5cf6", width=1.5)))
+    
+    # Preço principal plotado por cima com linha branca espessa para máximo contraste
+    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Price'], name="Preço Real (USD)", line=dict(color="#ffffff", width=2.5)))
     
     fig.update_layout(
         template="plotly_dark", height=750, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis_type="log", yaxis_title="Price (USD Log Scale)", xaxis_title="Timeline",
+        yaxis_type="log", yaxis_title="Preço (Log USD)", xaxis_title="Eixo Temporal",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), hovermode="x unified"
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -572,7 +575,7 @@ Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos hist
 
     st.info(
         "⚠️ O Z-Score aqui é uma **aproximação** calculada com preços públicos e supply estimado. "
-        "Para dados on-chain reais, consulta [Glassnode](https://glassnode.com) ou [LookIntoBitcoin](https://www.lookintobitcoin.com).",
+        "Para dados on-chain reais, consulta [Glassnode](https://glassnode.com) or [LookIntoBitcoin](https://www.lookintobitcoin.com).",
         icon="ℹ️"
     )
 
@@ -623,7 +626,6 @@ elif aba == "Médias Móveis":
     
     MA_COLORS = ["#3b82f6", "#f59e0b", "#ec4899", "#a855f7"]
     for p, color in zip(MA_PERIODS, MA_COLORS):
-        # AQUI FOI CORRIGIDO: name=f"{p}W SMA" diretamente, eliminando o operador lógico defeituoso
         fig.add_trace(go.Scatter(
             x=df_w.index, 
             y=df_w[f"{p}W SMA"], 
