@@ -154,7 +154,7 @@ with st.sidebar:
     )
     aba = st.radio(
         "Selecione a Análise:",
-        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "Rainbow Ribbon (Smart)", "MVRV Z-Score", "Médias Móveis"],
+        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "MVRV Z-Score", "Médias Móveis"],
     )
 
 
@@ -498,6 +498,7 @@ e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do a
     fig.add_trace(go.Scatter(x=df_visual_hist['Date_Clean'], y=df_visual_hist['Price'], name="Histórico Real (USD)", line=dict(color="#f8fafc", width=2)))
     fig.add_trace(go.Scatter(x=df_proj['Date_Clean'], y=df_proj['Price_Proj'], name="Projeção Recorrente", line=dict(color="#38bdf8", width=2, dash="dash")))
     
+    # NOVO: Legendas explícitas com a periodicidade temporal (DMA / WMA)
     fig.add_trace(go.Scatter(
         x=df_visual_hist['Date_Clean'].tolist() + df_proj['Date_Clean'].tolist()[1:],
         y=df_rep['200_DMA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['200_DMA_Comb'].tolist()[1:],
@@ -512,57 +513,13 @@ e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do a
     
     fig.update_layout(
         template="plotly_dark", height=700, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis_type="log", yanchor="bottom", yaxis_title="Preço (Escala Logarítmica USD)", xaxis_title="Linha do Tempo (Ciclo Atual + Projeção)",
+        yaxis_type="log", yaxis_title="Preço (Escala Logarítmica USD)", xaxis_title="Linha do Tempo (Ciclo Atual + Projeção)",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), hovermode="x unified"
     )
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 5: RAINBOW RIBBON (SMART) ---
-elif aba == "Rainbow Ribbon (Smart)":
-    help_rb = """Arco-Íris de Médias Móveis de Momentum macro. \n
-Ancorado matematicamente na 20W SMA multiplicada por bandas de extensão harmónicas com o espectro cromático clássico."""
-    st.header("🌈 Into The Cryptoverse Smart Rainbow Ribbon", help=help_rb)
-    
-    asset_name = st.selectbox("Selecione o Ativo para o Arco-Íris", list(ASSET_TICKERS.keys()))
-    df_rb = load_data(asset_name)
-    
-    if df_rb.empty:
-        st.stop()
-        
-    df_rb = df_rb.sort_values('Date_Clean').reset_index(drop=True)
-    
-    df_rb['20W_SMA_Daily'] = df_rb['Price'].rolling(140).mean()
-    
-    df_rb['Band_Red_Max'] = df_rb['20W_SMA_Daily'] * 3.5
-    df_rb['Band_Orange_Sell'] = df_rb['20W_SMA_Daily'] * 2.4
-    df_rb['Band_Yellow_Alert'] = df_rb['20W_SMA_Daily'] * 1.6
-    df_rb['Band_Green_Buy'] = df_rb['20W_SMA_Daily'] * 1.0
-    df_rb['Band_Blue_Floor'] = df_rb['20W_SMA_Daily'] * 0.75
-    df_rb['Band_Violet_Bottom'] = df_rb['20W_SMA_Daily'] * 0.55
-    
-    ultima_dt = df_rb['Date_Clean'].iloc[-1]
-    df_visual = df_rb[df_rb['Date_Clean'] >= (ultima_dt - timedelta(days=1200))]
-    
-    fig = go.Figure()
-    
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Red_Max'], name="0.9 Risk (Maximum Bubble Territory)", line=dict(color="#ef4444", width=1.5)))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Orange_Sell'], name="0.7 Risk (DCA Out Layer)", line=dict(color="#f97316", width=1.5)))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Yellow_Alert'], name="0.5 Risk (Overheating Alert)", line=dict(color="#eab308", width=1.5)))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Green_Buy'], name="0.3 Risk (Ben's Buy Trigger / 20W SMA)", line=dict(color="#22c55e", width=2.5)))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Blue_Floor'], name="0.2 Risk (Accumulation Layer)", line=dict(color="#3b82f6", width=1.5)))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Band_Violet_Bottom'], name="0.1 Risk (Generational Bottom)", line=dict(color="#8b5cf6", width=1.5)))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Price'], name="Preço Real (USD)", line=dict(color="#ffffff", width=2.5)))
-    
-    fig.update_layout(
-        template="plotly_dark", height=750, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis_type="log", yaxis_title="Preço (Log USD)", xaxis_title="Eixo Temporal",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), hovermode="x unified"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-
-# --- ABA 6: MVRV Z-SCORE ---
+# --- ABA 5: MVRV Z-SCORE ---
 elif aba == "MVRV Z-Score":
     help_mvrv = """Mete em perspetiva a sobrevalorização ou subvalorização do Bitcoin.  \n
 Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos históricos de acumulação."""
@@ -599,7 +556,7 @@ Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos hist
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 7: MÉDIAS MÓVEIS ---
+# --- ABA 6: MÉDIAS MÓVEIS ---
 elif aba == "Médias Móveis":
     help_ma = "Médias móveis de longo prazo em escala logarítmica. A linha de 200 SMA funciona historicamente como um forte suporte de mercado."
     st.header("📉 Weekly Moving Averages", help=help_ma)
@@ -613,6 +570,7 @@ elif aba == "Médias Móveis":
 
     MA_PERIODS = [20, 50, 100, 200]
     
+    # NOVO: Modificação das labels na Aba de Médias Móveis para explicitar que são semanais (W SMA)
     for p in MA_PERIODS:
         df_w[f"{p}W SMA"] = df_w["Price"].rolling(window=p).mean()
 
@@ -621,13 +579,7 @@ elif aba == "Médias Móveis":
     
     MA_COLORS = ["#3b82f6", "#f59e0b", "#ec4899", "#a855f7"]
     for p, color in zip(MA_PERIODS, MA_COLORS):
-        fig.add_trace(go.Scatter(
-            x=df_w.index, 
-            y=df_w[f"{p}W SMA"], 
-            name=f"{p}W SMA", 
-            line=dict(color=color), 
-            opacity=0.8
-        ))
+        fig.add_trace(go.Scatter(x=df_w.index, y=df_w[f"{p}W SMA"], name=f"{p}W SMA", line=dict(color=color), opacity=0.8))
 
     fig.update_layout(
         template="plotly_dark", height=750, yaxis_type="log", yaxis_title="Preço (log)", xaxis_title="Data",
