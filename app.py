@@ -65,7 +65,7 @@ st.markdown("""
 # --- 2. CACHE DE DADOS ---
 @st.cache_data(ttl=3600)
 def fetch_raw_prices(ticker: str, start_date: str) -> pd.DataFrame:
-    """Download dos preços brutos do yfinance. Separado do processamento para cache eficiente."""
+    """Download dos preços brutos do yfinance."""
     try:
         raw = yf.download(ticker, start=start_date, auto_adjust=True, progress=False)
         if raw.empty:
@@ -80,7 +80,7 @@ def fetch_raw_prices(ticker: str, start_date: str) -> pd.DataFrame:
 
 @st.cache_data
 def process_data(raw: pd.DataFrame) -> pd.DataFrame:
-    """Processamento e enriquecimento dos dados. Cache permanente enquanto os dados não mudam."""
+    """Processamento e enriquecimento dos dados."""
     if raw.empty:
         return pd.DataFrame()
 
@@ -88,7 +88,6 @@ def process_data(raw: pd.DataFrame) -> pd.DataFrame:
     df.columns = ["Date", "Price"]
     df["Date_Clean"] = pd.to_datetime(df["Date"]).dt.tz_localize(None)
 
-    # Remover 29 de Fevereiro para consistência nos gráficos de ciclos anuais
     df = df[~((df["Date_Clean"].dt.month == 2) & (df["Date_Clean"].dt.day == 29))]
 
     df["Year"] = df["Date_Clean"].dt.year
@@ -96,7 +95,6 @@ def process_data(raw: pd.DataFrame) -> pd.DataFrame:
     df["Quarter"] = df["Date_Clean"].dt.quarter
     df["DayOfYear"] = df.groupby("Year").cumcount() + 1
 
-    # Ciclos — ancorados em anos reais
     df["HalvCycle"] = df["Year"].apply(lambda y: HALV_MAP.get((y - HALVING_BASE) % 4, "—"))
     df["PresCycle"] = df["Year"].apply(lambda y: PRES_MAP.get((y - PRES_BASE) % 4, "—"))
 
@@ -121,7 +119,7 @@ def load_data(asset_name: str) -> pd.DataFrame:
 
 
 def supply_btc_aproximado(date: datetime) -> float:
-    """Estima o supply circulante do BTC com base na data (halvings reais)."""
+    """Estima o supply circulante do BTC com base na data."""
     halvings = [
         (datetime(2009, 1, 3), 50),
         (datetime(2012, 11, 28), 25),
@@ -134,7 +132,7 @@ def supply_btc_aproximado(date: datetime) -> float:
     for i, (h_date, reward) in enumerate(halvings[1:], start=1):
         end = h_date if date >= h_date else date
         days = (end - prev_date).days
-        blocks = days * 144  # ~144 blocos por dia
+        blocks = days * 144
         supply += blocks * prev_reward
         if date < h_date:
             break
@@ -244,25 +242,20 @@ AVERAGE/MEDIAN no final ajudam a identificar vieses sazonais."""
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 2: CICLOS DE MERCADO (CRITICAL FIX: CROSS-FILTERS FOR CRYPTO) ---
+# --- ABA 2: CICLOS DE MERCADO ---
 elif aba == "Ciclos de Mercado":
     help_cycle = """Compara o ROI YTD do ativo atual com anos anteriores na mesma fase do ciclo estrutural.  \n
 A linha verde sólida representa o ano corrente."""
     st.header("📈 Market Cycle ROI Comparison", help=help_cycle)
-    
-    # Grid de colunas dinâmicas dependendo do ativo
     c1, c2, c3 = st.columns(3)
     asset_name = c1.selectbox("Ativo", list(ASSET_TICKERS.keys()))
 
     is_sp500 = asset_name == "S&P 500"
+    col_c = "PresCycle" if is_sp500 else "HalvCycle"
     
     if is_sp500:
-        # S&P 500 só tem ciclo presidencial político
-        ciclo_tipo = "Ciclo Político Americano"
         ciclo = c2.selectbox("Fase do Ciclo Político", list(PRES_MAP.values()))
-        col_c = "PresCycle"
     else:
-        # Cripto pode ser analisada por Halving OU por Ciclo Político da liquidez do Fed
         ciclo_tipo = c2.selectbox("Perspetiva de Análise", ["Ciclo de Halving", "Ciclo Político Americano"])
         if ciclo_tipo == "Ciclo de Halving":
             ciclo = c3.selectbox("Fase do Halving", list(HALV_MAP.values()))
@@ -277,7 +270,6 @@ A linha verde sólida representa o ano corrente."""
 
     fig = go.Figure()
 
-    # Filtrar anos históricos usando a coluna correta (col_c) decidida pelos seletores
     df_hist = df_cycle[(df_cycle[col_c] == ciclo) & (df_cycle["Year"] < ano_atual)]
     for yr in sorted(df_hist["Year"].unique()):
         df_yr = df_hist[df_hist["Year"] == yr]
@@ -289,9 +281,8 @@ A linha verde sólida representa o ano corrente."""
             )
         )
 
-    if not df_hist.empty:
-        stats = df_hist.groupby("DayOfYear")["ROI"].mean().reset_index()
-        fig.add_trace(go.Scatter(x=stats["DayOfYear"], y=stats["ROI"], name="Média Histórica", line=dict(color="white", dash="dash", width=2)))
+    stats = df_hist.groupby("DayOfYear")["ROI"].mean().reset_index()
+    fig.add_trace(go.Scatter(x=stats["DayOfYear"], y=stats["ROI"], name="Média Histórica", line=dict(color="white", dash="dash", width=2)))
 
     df_curr = df_cycle[df_cycle["Year"] == ano_atual]
     if not df_curr.empty:
@@ -310,12 +301,12 @@ A linha verde sólida representa o ano corrente."""
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 3: RISK METRIC & DYNAMIC DCA ---
+# --- ABA 3: RISK METRIC & BIFASIC DYNAMIC DCA ---
 elif aba == "Risk Metric (DCA)":
     help_risk = """Métrica de risco de 0 a 1 inspirada no Into The Cryptoverse (Benjamin Cowen).  \n
-Abaixo de 0.3: Zona de Acumulação e Compras Estratégicas (DCA In).  \n
-Entre 0.3 e 0.6: Zona Cinzenta de Inação (Hold Estrito).  \n
-Acima de 0.6: Distribuição Fracionada (DCA Out)."""
+Abaixo de 0.3: Zona de Acumulação e Dynamic DCA In.  \n
+Entre 0.3 e 0.6: Zona Cinzenta (Banda de Inação de Longo Prazo).  \n
+Acima de 0.6: Distribuição Fracionada em 15 avos (DCA Out)."""
     st.header("📊 Into The Cryptoverse Risk Metric & Dynamic DCA", help=help_risk)
     
     asset_name = st.selectbox("Selecione o Ativo para Análise de Risco", ["Bitcoin (BTC)", "Ethereum (ETH)"])
@@ -507,6 +498,7 @@ e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do a
     fig.add_trace(go.Scatter(x=df_visual_hist['Date_Clean'], y=df_visual_hist['Price'], name="Histórico Real (USD)", line=dict(color="#f8fafc", width=2)))
     fig.add_trace(go.Scatter(x=df_proj['Date_Clean'], y=df_proj['Price_Proj'], name="Projeção Recorrente", line=dict(color="#38bdf8", width=2, dash="dash")))
     
+    # NOVO: Legendas explícitas com a periodicidade temporal (DMA / WMA)
     fig.add_trace(go.Scatter(
         x=df_visual_hist['Date_Clean'].tolist() + df_proj['Date_Clean'].tolist()[1:],
         y=df_rep['200_DMA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['200_DMA_Comb'].tolist()[1:],
@@ -577,15 +569,17 @@ elif aba == "Médias Móveis":
     df_w = df_ma.set_index("Date_Clean")["Price"].resample("W").last().to_frame()
 
     MA_PERIODS = [20, 50, 100, 200]
-    MA_COLORS = ["#3b82f6", "#f59e0b", "#ec4899", "#a855f7"]
-
+    
+    # NOVO: Modificação das labels na Aba de Médias Móveis para explicitar que são semanais (W SMA)
     for p in MA_PERIODS:
-        df_w[f"{p} SMA"] = df_w["Price"].rolling(window=p).mean()
+        df_w[f"{p}W SMA"] = df_w["Price"].rolling(window=p).mean()
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_w.index, y=df_w['Price'], name="Preço", line=dict(color="white", width=1.5)))
+    
+    MA_COLORS = ["#3b82f6", "#f59e0b", "#ec4899", "#a855f7"]
     for p, color in zip(MA_PERIODS, MA_COLORS):
-        fig.add_trace(go.Scatter(x=df_w.index, y=df_w[f"{p} SMA"], name=f"{p} SMA", line=dict(color=color), opacity=0.8))
+        fig.add_trace(go.Scatter(x=df_w.index, y=df_w[f"{p}W SMA"], name=f"{p}W SMA", line=dict(color=color), opacity=0.8))
 
     fig.update_layout(
         template="plotly_dark", height=750, yaxis_type="log", yaxis_title="Preço (log)", xaxis_title="Data",
