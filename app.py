@@ -1,8 +1,3 @@
-O que aconteceu aqui foi uma gralha mecânica de digitação na linha 5: faltou colocar a palavra-chave `as` para fazer o alias da biblioteca (`import plotly.graph_objects go` em vez de `import plotly.graph_objects as go`). O interpretador do Python não encontrou a instrução de atribuição e mandou o código abaixo com um `SyntaxError`.
-
-Aqui tens o script completo e corrigido, pronto a rodar sem falhas:
-
-```python
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -517,7 +512,7 @@ e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do a
     
     fig.update_layout(
         template="plotly_dark", height=700, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis_type="log", yaxis_title="Preço (Escala Logarítmica USD)", xaxis_title="Linha do Tempo (Ciclo Atual + Projeção)",
+        yaxis_type="log", yanchor="bottom", yaxis_title="Preço (Escala Logarítmica USD)", xaxis_title="Linha do Tempo (Ciclo Atual + Projeção)",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), hovermode="x unified"
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -639,5 +634,3 @@ elif aba == "Médias Móveis":
         paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
     st.plotly_chart(fig, use_container_width=True)
-
-```
