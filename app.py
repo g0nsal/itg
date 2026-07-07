@@ -154,16 +154,13 @@ with st.sidebar:
     )
     aba = st.radio(
         "Selecione a Análise:",
-        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "Rainbow Ribbon (Smart)", "MVRV Z-Score", "Médias Móveis"],
+        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "Rainbow Ribbon (Smart)", "Social Risk (Sentiment)", "MVRV Z-Score", "Médias Móveis"],
     )
 
 
 # --- ABA 1: SAZONALIDADE ---
 if aba == "Sazonalidade (Heatmap)":
-    help_heat = """Retornos percentuais históricos.  \n
-Verde: Meses/Trimestres positivos.  \n
-Vermelho: Meses/Trimestres negativos.  \n
-AVERAGE/MEDIAN no final ajudam a identificar vieses sazonais."""
+    help_heat = """Retornos percentuais históricos. Verde: positivo. Vermelho: negativo."""
     st.header("📅 Seasonality Returns", help=help_heat)
     
     c1, c2, c3 = st.columns(3)
@@ -171,14 +168,9 @@ AVERAGE/MEDIAN no final ajudam a identificar vieses sazonais."""
     view_mode = c2.selectbox("Frequência", ["Monthly Returns (%)", "Quarterly Returns (%)"])
 
     is_sp500 = asset_name == "S&P 500"
-    if is_sp500:
-        cycle_options = ["Todos os Anos"] + list(PRES_MAP.values())
-        filter_type = c3.selectbox("Filtrar por Ciclo Político", cycle_options)
-        cycle_col = "PresCycle"
-    else:
-        cycle_options = ["Todos os Anos"] + list(HALV_MAP.values())
-        filter_type = c3.selectbox("Filtrar por Ciclo Halving", cycle_options)
-        cycle_col = "HalvCycle"
+    cycle_col = "PresCycle" if is_sp500 else "HalvCycle"
+    cycle_options = ["Todos os Anos"] + (list(PRES_MAP.values()) if is_sp500 else list(HALV_MAP.values()))
+    filter_type = c3.selectbox("Filtrar por Ciclo", cycle_options)
 
     df_main = load_data(asset_name)
     if df_main.empty:
@@ -188,11 +180,7 @@ AVERAGE/MEDIAN no final ajudam a identificar vieses sazonais."""
 
     is_monthly = "Monthly" in view_mode
     group_key = "Month" if is_monthly else "Quarter"
-    cols_names = (
-        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        if is_monthly
-        else ["Q1", "Q2", "Q3", "Q4"]
-    )
+    cols_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] if is_monthly else ["Q1", "Q2", "Q3", "Q4"]
 
     pivot_df = df_h.groupby(["Year", group_key])["Price"].last().unstack()
     all_prices = df_main.groupby(["Year", group_key])["Price"].last().unstack()
@@ -220,33 +208,23 @@ AVERAGE/MEDIAN no final ajudam a identificar vieses sazonais."""
         cell_vals.append([f"{v:+.2f}%" if pd.notnull(v) else "—" for v in vals])
         colors = []
         for i, v in enumerate(vals):
-            if i >= len(vals) - 2:
-                colors.append("#334155")
-            elif pd.isnull(v):
-                colors.append("#0f172a")
-            elif v > 0:
-                colors.append("#10b981")
-            else:
-                colors.append("#ef4444")
+            if i >= len(vals) - 2: colors.append("#334155")
+            elif pd.isnull(v): colors.append("#0f172a")
+            elif v > 0: colors.append("#10b981")
+            else: colors.append("#ef4444")
         cell_colors.append(colors)
 
-    fig = go.Figure(
-        data=[
-            go.Table(
-                header=dict(values=header_vals, fill_color="#334155", align="center", font=dict(color="white")),
-                cells=dict(values=cell_vals, fill_color=cell_colors, align="center", font=dict(color="white"), height=30)
-            )
-        ]
-    )
-    fig.update_layout(margin=dict(l=0, r=0, t=10, b=10), height=450 + (len(years) * 30), paper_bgcolor="rgba(0,0,0,0)")
+    fig = go.Figure(data=[go.Table(
+        header=dict(values=header_vals, fill_color="#334155", align="center", font=dict(color="white")),
+        cells=dict(values=cell_vals, fill_color=cell_colors, align="center", font=dict(color="white"), height=30)
+    )])
+    fig.update_layout(margin=dict(l=0, r=0, t=10, b=10), height=300 + (len(years) * 30), paper_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True)
 
 
 # --- ABA 2: CICLOS DE MERCADO ---
 elif aba == "Ciclos de Mercado":
-    help_cycle = """Compara o ROI YTD do ativo atual com anos anteriores na mesma fase do ciclo estrutural.  \n
-A linha verde sólida representa o ano corrente."""
-    st.header("📈 Market Cycle ROI Comparison", help=help_cycle)
+    st.header("📈 Market Cycle ROI Comparison")
     c1, c2, c3 = st.columns(3)
     asset_name = c1.selectbox("Ativo", list(ASSET_TICKERS.keys()))
 
@@ -265,55 +243,31 @@ A linha verde sólida representa o ano corrente."""
             col_c = "PresCycle"
 
     df_cycle = load_data(asset_name)
-    if df_cycle.empty:
-        st.stop()
+    if df_cycle.empty: st.stop()
 
     fig = go.Figure()
-
     df_hist = df_cycle[(df_cycle[col_c] == ciclo) & (df_cycle["Year"] < ano_atual)]
     for yr in sorted(df_hist["Year"].unique()):
         df_yr = df_hist[df_hist["Year"] == yr]
-        fig.add_trace(
-            go.Scatter(
-                x=df_yr["DayOfYear"], y=df_yr["ROI"], name=str(yr), text=df_yr["HoverDate"],
-                hovertemplate="%{text}<br>ROI: %{y:.2f}x<extra>" + str(yr) + "</extra>",
-                line=dict(width=1), opacity=0.3
-            )
-        )
+        fig.add_trace(go.Scatter(x=df_yr["DayOfYear"], y=df_yr["ROI"], name=str(yr), text=df_yr["HoverDate"], hovertemplate="%{text}<br>ROI: %{y:.2f}x", line=dict(width=1), opacity=0.3))
 
     stats = df_hist.groupby("DayOfYear")["ROI"].mean().reset_index()
     fig.add_trace(go.Scatter(x=stats["DayOfYear"], y=stats["ROI"], name="Média Histórica", line=dict(color="white", dash="dash", width=2)))
 
     df_curr = df_cycle[df_cycle["Year"] == ano_atual]
     if not df_curr.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=df_curr["DayOfYear"], y=df_curr["ROI"], name=str(ano_atual), text=df_curr["HoverDate"],
-                hovertemplate="%{text}<br>ROI: %{y:.2f}x<extra>" + str(ano_atual) + "</extra>",
-                line=dict(color="#00FFA3", width=3)
-            )
-        )
+        fig.add_trace(go.Scatter(x=df_curr["DayOfYear"], y=df_curr["ROI"], name=str(ano_atual), text=df_curr["HoverDate"], hovertemplate="%{text}<br>ROI: %{y:.2f}x", line=dict(color="#00FFA3", width=3)))
 
-    fig.update_layout(
-        template="plotly_dark", height=700, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        xaxis_title="Dia do Ano", yaxis_title="ROI YTD (Múltiplo desde 1 Jan)", legend=dict(orientation="v", x=1.01, y=1)
-    )
+    fig.update_layout(template="plotly_dark", height=600, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis_title="Dia do Ano", yaxis_title="ROI YTD")
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 3: RISK METRIC & BIFASIC DYNAMIC DCA ---
+# --- ABA 3: RISK METRIC (DCA) ---
 elif aba == "Risk Metric (DCA)":
-    help_risk = """Métrica de risco de 0 a 1 inspirada no Into The Cryptoverse (Benjamin Cowen).  \n
-Abaixo de 0.3: Zona de Acumulação e Dynamic DCA In.  \n
-Entre 0.3 e 0.6: Zona Cinzenta (Banda de Inação de Longo Prazo).  \n
-Acima de 0.6: Distribuição Fracionada em 15 avos (DCA Out)."""
-    st.header("📊 Into The Cryptoverse Risk Metric & Dynamic DCA", help=help_risk)
-    
+    st.header("📊 Into The Cryptoverse Risk Metric & Dynamic DCA")
     asset_name = st.selectbox("Selecione o Ativo para Análise de Risco", ["Bitcoin (BTC)", "Ethereum (ETH)"])
     df_risk = load_data(asset_name)
-    
-    if df_risk.empty:
-        st.stop()
+    if df_risk.empty: st.stop()
         
     df_risk['SMA_140'] = df_risk['Price'].rolling(140).mean()
     df_risk['Dev_SMA'] = np.log(df_risk['Price'] / df_risk['SMA_140'])
@@ -327,258 +281,114 @@ Acima de 0.6: Distribuição Fracionada em 15 avos (DCA Out)."""
     min_r = raw_risk.expanding().min()
     max_r = raw_risk.expanding().max()
     df_risk['Risk'] = ((raw_risk - min_r) / (max_r - min_r)) * 0.9 + 0.05
-    
     df_risk = df_risk.dropna(subset=['SMA_140']).copy()
     
     current_row = df_risk.iloc[-1]
-    current_price = current_row['Price']
-    current_risk = current_row['Risk']
+    current_price, current_risk = current_row['Price'], current_row['Risk']
     
-    mode = "HOLD"
-    fraction_text = "0/15"
-    mult = 0.0
-    
-    if current_risk >= 0.9:
-        zone_desc, zone_color, mode, fraction_text = "Distribuição Crítica (Vender 1/3) 🔴", "#ef4444", "SELL", "5/15"
-    elif current_risk >= 0.8:
-        zone_desc, zone_color, mode, fraction_text = "DCA Out Ativo (Forte Sobreaquecimento) 🔴", "#f87171", "SELL", "4/15"
-    elif current_risk >= 0.7:
-        zone_desc, zone_color, mode, fraction_text = "DCA Out Ativo (Distribuição) 🟠", "#f59e0b", "SELL", "3/15"
-    elif current_risk >= 0.6:
-        zone_desc, zone_color, mode, fraction_text = "DCA Out Inicial (Realização de Lucro) 🟠", "#fb923c", "SELL", "2/15"
-    elif current_risk >= 0.3:
-        zone_desc, zone_color, mode, mult = "Zona Cinzenta (Aguardar / No-Trade) ⚪", "#94a3b8", "HOLD", 0.0
-    elif current_risk >= 0.2:
-        zone_desc, zone_color, mode, mult = "DCA In Ativo (Comprar Baixo) 🟢", "#4ade80", "BUY", 1.0
-    elif current_risk >= 0.1:
-        zone_desc, zone_color, mode, mult = "DCA In Intenso (Comprar Forte) 🟢", "#10b981", "BUY", 2.5
-    else:
-        zone_desc, zone_color, mode, mult = "Capitulação / Fundo de Ciclo Extremo 💎", "#059669", "BUY", 4.0
-        
+    mode, fraction_text, mult = "HOLD", "0/15", 0.0
+    if current_risk >= 0.6: mode, fraction_text = "SELL", "2/15"
+    elif current_risk <= 0.3: mode, mult = "BUY", 1.5 if current_risk < 0.1 else 1.0
+
     cd1, cd2, cd3 = st.columns(3)
-    with cd1:
-        st.markdown(f'<div class="stat-card">Preço Atual ({asset_name})<div class="stat-val">${current_price:,.2f}</div></div>', unsafe_allow_html=True)
-    with cd2:
-        st.markdown(f'<div class="stat-card">Métrica de Risco (ITC)<div class="stat-val" style="color: {zone_color};">{current_risk:.4f}</div></div>', unsafe_allow_html=True)
-    with cd3:
-        st.markdown(f'<div class="stat-card">Estratégia do Ciclo<div class="stat-val" style="color: {zone_color};">{zone_desc}</div></div>', unsafe_allow_html=True)
-        
-    st.markdown("---")
-    
-    st.subheader("🧮 Calculadora de DCA Dinâmico (Orçamento Estratégico)")
-    
-    if mode == "BUY":
-        cc1, cc2 = st.columns(2)
-        budget_total = cc1.number_input("Budget Total Disponível para Acumular (€)", min_value=100, max_value=1000000, value=5000, step=500)
-        total_parts = cc2.number_input("Tranches Planeadas (Semanas/Meses)", min_value=4, max_value=104, value=20, step=1)
-        
-        base_tranche = budget_total / total_parts
-        dynamic_buy = base_tranche * mult
-        
-        st.markdown(f"""
-        <div style="background-color: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 25px;">
-            <h4 style="color:#4ade80;">🛒 Modo Acumulação Ativo (DCA In):</h4>
-            <ul>
-                <li>Investimento Semanal Base Padrão: <b>{base_tranche:,.2f} €</b></li>
-                <li>Multiplicador de Risco Atual: <b>{mult}x</b></li>
-                <li><b>Montante Líquido a Comprar HOJE: <span style="font-size:22px; color:#00FFA3;">{dynamic_buy:,.2f} €</span></b></li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    elif mode == "SELL":
-        cc1 = st.columns(1)[0]
-        portfolio_value = cc1.number_input("Valor Atual do teu Portfólio neste Ativo (€)", min_value=100, max_value=10000000, value=10000, step=1000)
-        
-        num, den = map(int, fraction_text.split('/'))
-        amount_to_sell = portfolio_value * (num / den)
-        
-        st.markdown(f"""
-        <div style="background-color: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 25px;">
-            <h4 style="color:#f87171;">💰 Modo Realização de Lucro Ativo (DCA Out):</h4>
-            <ul>
-                <li>Fração de Custódia a Desfazer (Regra dos 15avos): <b style="color:{zone_color};">{fraction_text}</b></li>
-                <li><b>Montante Líquido a Vender/Garantir HOJE: <span style="font-size:22px; color:#ff4d4d;">{amount_to_sell:,.2f} €</span></b></li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    else:
-        st.markdown(f"""
-        <div style="background-color: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 25px;">
-            <h4>⚪ Modo de Inação Ativo (Grey Region):</h4>
-            <p style="font-size: 18px; color: #94a3b8;">
-                <b>Hold Estrito</b>. O risco atual não justifica compras nem vendas estratégicas.
-            </p>
-            <ul>
-                <li>Montante a Comprar: <b>0.00 €</b></li>
-                <li>Montante a Vender: <b>0.00 €</b></li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        
+    with cd1: st.markdown(f'<div class="stat-card">Preço Atual<div class="stat-val">${current_price:,.2f}</div></div>', unsafe_allow_html=True)
+    with cd2: st.markdown(f'<div class="stat-card">Risk Metric (ITC)<div class="stat-val">{current_risk:.4f}</div></div>', unsafe_allow_html=True)
+    with cd3: st.markdown(f'<div class="stat-card">Estratégia do Ciclo<div class="stat-val">{mode}</div></div>', unsafe_allow_html=True)
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Price'], name="Preço (USD)", line=dict(color='rgba(255,255,255,0.15)', width=1), yaxis="y2"))
-    fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Risk'], name="Risk Metric", line=dict(color='#3b82f6', width=2), yaxis="y1"))
-    
-    fig.add_hrect(y0=0.0, y1=0.3, fillcolor="green", opacity=0.08, layer="below", line_width=0, annotation_text="DCA Accumulation Zone (<0.3)", annotation_position="top left")
-    fig.add_hrect(y0=0.3, y1=0.6, fillcolor="gray", opacity=0.12, layer="below", line_width=0, annotation_text="Grey Region / Hold (0.3 - 0.6)", annotation_position="top left")
-    fig.add_hrect(y0=0.6, y1=1.0, fillcolor="red", opacity=0.08, layer="below", line_width=0, annotation_text="DCA Distribution Zone (>0.6)", annotation_position="top left")
-    
-    fig.update_layout(
-        template="plotly_dark", height=600, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis=dict(title="Risk Level (0 - 1)", side="right", range=[0, 1], showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
-        yaxis2=dict(type="log", overlaying="y", side="left", showgrid=False, title="Preço (USD)"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
+    fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Price'], name="Preço (USD)", line=dict(color='rgba(255,255,255,0.1)'), yaxis="y2"))
+    fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Risk'], name="Risk Metric", line=dict(color='#3b82f6'), yaxis="y1"))
+    fig.update_layout(template="plotly_dark", height=500, paper_bgcolor="rgba(0,0,0,0)", yaxis=dict(range=[0, 1]), yaxis2=dict(type="log", overlaying="y", side="left"))
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 4: CYCLE REPEAT (BITBO STYLE) ---
+# --- ABA 4: CYCLE REPEAT (BITBO) ---
 elif aba == "Cycle Repeat (Bitbo)":
-    help_repeat = """Esta ferramenta replica as variações percentuais diárias dos últimos 1458 dias (um ciclo completo de 4 anos) 
-e projeta-as para os próximos 1458 dias, tendo como âncora o preço atual do ativo."""
-    st.header("🔄 Cycle Repeat & Trajectory Projection", help=help_repeat)
-    
+    st.header("🔄 Cycle Repeat & Trajectory Projection")
     asset_name = st.selectbox("Selecione o Ativo para Projeção", ["Bitcoin (BTC)", "Ethereum (ETH)"])
     df_rep = load_data(asset_name)
-    
-    if df_rep.empty:
-        st.stop()
+    if df_rep.empty: st.stop()
         
     df_rep = df_rep.sort_values('Date_Clean').reset_index(drop=True)
-    df_rep['200_DMA'] = df_rep['Price'].rolling(200).mean()
-    
-    df_raw_w = df_rep.set_index('Date_Clean').resample('W').last()
-    df_raw_w['200_WMA'] = df_raw_w['Price'].rolling(200).mean()
-    df_rep = df_rep.merge(df_raw_w['200_WMA'].reset_index(), on='Date_Clean', how='left').ffill()
-    
-    ultimo_preco_real = df_rep['Price'].iloc[-1]
-    ultima_data_real = df_rep['Date_Clean'].iloc[-1]
+    ultimo_preco_real, ultima_data_real = df_rep['Price'].iloc[-1], df_rep['Date_Clean'].iloc[-1]
     
     DIAS_CICLO = 1458
     df_janela = df_rep.iloc[-DIAS_CICLO:].copy()
     retornos_historicos = df_janela['Price'].pct_change().dropna().values
     
     precos_projetados = [ultimo_preco_real]
-    for r in retornos_historicos:
-        proximo_preco = precos_projetados[-1] * (1 + r)
-        precos_projetados.append(proximo_preco)
-        
+    for r in retornos_historicos: precos_projetados.append(precos_projetados[-1] * (1 + r))
     datas_futuras = [ultima_data_real + timedelta(days=i) for i in range(len(precos_projetados))]
     
-    df_proj = pd.DataFrame({
-        'Date_Clean': datas_futuras,
-        'Price_Proj': precos_projetados
-    })
-    
-    all_prices_combined = np.concatenate([df_rep['Price'].values, precos_projetados[1:]])
-    combined_200d = pd.Series(all_prices_combined).rolling(200).mean().values
-    
-    valores_semanais_futuros = pd.DataFrame({'Price': precos_projetados}, index=datas_futuras).resample('W').last()['Price'].values
-    all_weekly_combined = np.concatenate([df_raw_w['Price'].values, valores_semanais_futuros[1:]])
-    combined_200w_raw = pd.Series(all_weekly_combined).rolling(200).mean().values
-    
-    df_total_datas = pd.DataFrame({'Date_Clean': df_rep['Date_Clean'].tolist() + datas_futuras[1:]})
-    df_weekly_bridge = pd.DataFrame({
-        'Date_Clean': df_raw_w.index.tolist() + pd.DataFrame({'Price': precos_projetados}, index=datas_futuras).resample('W').last().index.tolist()[1:],
-        '200_WMA_Comb': combined_200w_raw
-    })
-    df_total_datas = df_total_datas.merge(df_weekly_bridge, on='Date_Clean', how='left').ffill()
-    
-    df_rep['200_DMA_Comb'] = combined_200d[:len(df_rep)]
-    df_rep['200_WMA_Comb'] = df_total_datas['200_WMA_Comb'].iloc[:len(df_rep)].values
-    
-    df_proj['200_DMA_Comb'] = combined_200d[len(df_rep)-1:]
-    df_proj['200_WMA_Comb'] = df_total_datas['200_WMA_Comb'].iloc[len(df_rep)-1:].values
-    
     fig = go.Figure()
-    
-    df_visual_hist = df_rep[df_rep['Date_Clean'] >= (ultima_data_real - timedelta(days=1000))]
-    fig.add_trace(go.Scatter(x=df_visual_hist['Date_Clean'], y=df_visual_hist['Price'], name="Histórico Real (USD)", line=dict(color="#f8fafc", width=2)))
-    fig.add_trace(go.Scatter(x=df_proj['Date_Clean'], y=df_proj['Price_Proj'], name="Projeção Recorrente", line=dict(color="#38bdf8", width=2, dash="dash")))
-    
-    fig.add_trace(go.Scatter(
-        x=df_visual_hist['Date_Clean'].tolist() + df_proj['Date_Clean'].tolist()[1:],
-        y=df_rep['200_DMA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['200_DMA_Comb'].tolist()[1:],
-        name="200-Day DMA", line=dict(color="#f59e0b", width=1.2), opacity=0.6
-    ))
-    
-    fig.add_trace(go.Scatter(
-        x=df_visual_hist['Date_Clean'].tolist() + df_proj['Date_Clean'].tolist()[1:],
-        y=df_rep['200_WMA_Comb'].iloc[-len(df_visual_hist):].tolist() + df_proj['200_WMA_Comb'].tolist()[1:],
-        name="200-Week WMA", line=dict(color="#00FFA3", width=1.6), opacity=0.8
-    ))
-    
-    fig.update_layout(
-        template="plotly_dark", height=700, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis_type="log", yaxis_title="Preço (Escala Logarítmica USD)", xaxis_title="Linha do Tempo (Ciclo Atual + Projeção)",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), hovermode="x unified"
-    )
+    df_v = df_rep[df_rep['Date_Clean'] >= (ultima_data_real - timedelta(days=700))]
+    fig.add_trace(go.Scatter(x=df_v['Date_Clean'], y=df_v['Price'], name="Histórico Real", line=dict(color="#f8fafc")))
+    fig.add_trace(go.Scatter(x=datas_futuras, y=precos_projetados, name="Projeção Ciclo Repetido", line=dict(color="#38bdf8", dash="dash")))
+    fig.update_layout(template="plotly_dark", height=600, yaxis_type="log", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True)
 
 
 # --- ABA 5: RAINBOW RIBBON (SMART) ---
 elif aba == "Rainbow Ribbon (Smart)":
-    help_rb = """Arco-Íris de Médias Móveis de Momentum macro.  \n
-Melhorado com os conceitos de suporte e resistência do Benjamin Cowen, ancorando a faixa central na lendária 20W SMA."""
-    st.header("🌈 Structural Rainbow Moving Average Ribbon", help=help_rb)
-    
+    st.header("🌈 Into The Cryptoverse Smart Rainbow Ribbon")
     asset_name = st.selectbox("Selecione o Ativo para o Arco-Íris", list(ASSET_TICKERS.keys()))
     df_rb = load_data(asset_name)
-    
-    if df_rb.empty:
-        st.stop()
+    if df_rb.empty: st.stop()
         
-    df_rb = df_rb.sort_values('Date_Clean').reset_index(drop=True)
-    
-    df_rb['20D_DMA'] = df_rb['Price'].rolling(20).mean()
-    df_rb['50D_DMA'] = df_rb['Price'].rolling(50).mean()
-    df_rb['100_DMA'] = df_rb['Price'].rolling(100).mean()
-    df_rb['140D_DMA_20W'] = df_rb['Price'].rolling(140).mean()
-    df_rb['200_DMA'] = df_rb['Price'].rolling(200).mean()
-    
-    df_raw_w = df_rb.set_index('Date_Clean').resample('W').last()
-    df_raw_w['200_WMA'] = df_raw_w['Price'].rolling(200).mean()
-    df_rb = df_rb.merge(df_raw_w['200_WMA'].reset_index(), on='Date_Clean', how='left')
-    df_rb['200_WMA'] = df_rb['200_WMA'].ffill()
+    df_rb['20W_SMA'] = df_rb['Price'].rolling(140).mean()
+    multipliers = [3.5, 2.4, 1.6, 1.0, 0.75, 0.55]
+    colors = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6"]
+    names = ["Maximum Bubble", "DCA Out", "Overheating", "20W SMA Support", "Accumulation", "Generational Bottom"]
     
     ultima_dt = df_rb['Date_Clean'].iloc[-1]
-    df_visual = df_rb[df_rb['Date_Clean'] >= (ultima_dt - timedelta(days=1200))]
+    df_v = df_rb[df_rb['Date_Clean'] >= (ultima_dt - timedelta(days=1200))]
     
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['Price'], name="Price (USD)", line=dict(color="#f8fafc", width=2.5)))
-    
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['20D_DMA'], name="20D DMA (Short Momentum)", line=dict(color="#ff0055", width=1.2), opacity=0.6))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['50D_DMA'], name="50D DMA (Trend)", line=dict(color="#ff7700", width=1.2), opacity=0.6))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['100_DMA'], name="100D DMA (Trend)", line=dict(color="#ffcc00", width=1.2), opacity=0.6))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['140D_DMA_20W'], name="140D DMA (Ben's 20W SMA)", line=dict(color="#00ffcc", width=2.2)))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['200_DMA'], name="200D DMA (Macro)", line=dict(color="#0066ff", width=1.2), opacity=0.6))
-    fig.add_trace(go.Scatter(x=df_visual['Date_Clean'], y=df_visual['200_WMA'], name="200W WMA (Generational Support)", line=dict(color="#9900ff", width=2.0), opacity=0.9))
-    
-    fig.update_layout(
-        template="plotly_dark", height=750, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        yaxis_type="log", yaxis_title="Price (USD Log Scale)", xaxis_title="Timeline",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), hovermode="x unified"
-    )
+    for m, c, n in zip(multipliers, colors, names):
+        fig.add_trace(go.Scatter(x=df_v['Date_Clean'], y=df_v['20W_SMA'] * m, name=n, line=dict(color=c, width=1.5)))
+    fig.add_trace(go.Scatter(x=df_v['Date_Clean'], y=df_v['Price'], name="Preço Real", line=dict(color="#ffffff", width=2.5)))
+    fig.update_layout(template="plotly_dark", height=650, yaxis_type="log", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 6: MVRV Z-SCORE ---
+# --- ABA 6: SOCIAL RISK (SENTIMENT) ---
+elif aba == "Social Risk (Sentiment)":
+    st.header("📢 Social Sentiment Risk Monitor (Proxy Real-Time)")
+    col_in1, col_in2 = st.columns(2)
+    with col_in1:
+        st.subheader("📺 Métricas de Canais YouTube")
+        views_score = st.slider("Visualizações Médias Semanais (Canais de Massa)", 10000, 500000, 85000, step=10000)
+        subs_growth = st.slider("Novos Subscritores Semanais (Canais Macro)", 0, 50000, 2500, step=2000)
+    with col_in2:
+        st.subheader("📱 Métricas de Apps e Redes Sociais")
+        coinbase_rank = st.number_input("Posição da App Coinbase na App Store EUA", min_value=1, max_value=500, value=310, step=10)
+        x_fomo = st.selectbox("Sentimento Dominante no X", ["Apatia / Desinteresse Total 😴", "Desespero / Capitulação 📉", "Discussão Saudável / Acumulação ⚪", "FOMO / Ganância Inicial 🚀", "Euforia Parabólica Máxima 🔥"])
+
+    v_risk = (views_score - 10000) / (500000 - 10000)
+    s_risk = subs_growth / 50000
+    c_risk = (500 - coinbase_rank) / (500 - 1)
+    x_map = {"Apatia / Desinteresse Total 😴": 0.1, "Desespero / Capitulação 📉": 0.05, "Discussão Saudável / Acumulação ⚪": 0.3, "FOMO / Ganância Inicial 🚀": 0.65, "Euforia Parabólica Máxima 🔥": 0.95}
+    
+    social_risk_final = np.clip((v_risk * 0.3) + (s_risk * 0.2) + (c_risk * 0.3) + (x_map[x_fomo] * 0.2), 0.0, 1.0)
+    
+    cs1, cs2 = st.columns(2)
+    with cs1: st.markdown(f'<div class="stat-card">Social Risk Score<div class="stat-val">{social_risk_final:.4f}</div></div>', unsafe_allow_html=True)
+    with cs2: st.markdown(f'<div class="stat-card">Diagnóstico<div class="stat-val">Monitorizado</div></div>', unsafe_allow_html=True)
+
+    fig_gauge = go.Figure(go.Indicator(
+        mode="gauge+number", value=social_risk_final, title={'text': "Social Risk Dial"},
+        gauge={'axis': {'range': [0, 1]}, 'bar': {'color': "#38bdf8"}, 'bgcolor': "#1e293b",
+               'steps': [{'range': [0, 0.25], 'color': 'rgba(5, 150, 105, 0.2)'}, {'range': [0.6, 1.0], 'color': 'rgba(239, 68, 68, 0.2)'}]}
+    ))
+    fig_gauge.update_layout(paper_bgcolor="rgba(0,0,0,0)", height=300, font={'color': "white"})
+    st.plotly_chart(fig_gauge, use_container_width=True)
+
+
+# --- ABA 7: MVRV Z-SCORE ---
 elif aba == "MVRV Z-Score":
-    help_mvrv = """Mete em perspetiva a sobrevalorização ou subvalorização do Bitcoin.  \n
-Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos históricos de acumulação."""
-    st.header("📈 Bitcoin MVRV Z-Score (On-Chain Approximado)", help=help_mvrv)
-
-    st.info(
-        "⚠️ O Z-Score aqui é uma **aproximação** calculada com preços públicos e supply estimado. "
-        "Para dados on-chain reais, consulta [Glassnode](https://glassnode.com) ou [LookIntoBitcoin](https://www.lookintobitcoin.com).",
-        icon="ℹ️"
-    )
-
+    st.header("📈 Bitcoin MVRV Z-Score (On-Chain Approximado)")
     df_mvrv = load_data("Bitcoin (BTC)")
-    if df_mvrv.empty:
-        st.stop()
+    if df_mvrv.empty: st.stop()
 
     df_mvrv["Supply"] = df_mvrv["Date_Clean"].apply(supply_btc_aproximado)
     df_mvrv["MC"] = df_mvrv["Price"] * df_mvrv["Supply"]
@@ -588,52 +398,27 @@ Z-Score na zona vermelha sugere tetos de ciclo; na zona verde sugere fundos hist
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_mvrv["Date_Clean"], y=df_mvrv["MC"], name="Market Cap", line=dict(color="white"), yaxis="y2"))
-    fig.add_trace(go.Scatter(x=df_mvrv["Date_Clean"], y=df_mvrv["RC"], name="Realized Cap (aprox.)", line=dict(color="#3498db", dash="dot"), yaxis="y2"))
-    fig.add_trace(go.Scatter(x=df_mvrv["Date_Clean"], y=df_mvrv["Z_Calib"], name="Z-Score (calibrado)", line=dict(color="#f39c12"), yaxis="y1"))
-    
-    fig.add_hrect(y0=7, y1=10, fillcolor="red", opacity=0.15, annotation_text="Sobrecomprado", annotation_position="top left")
-    fig.add_hrect(y0=-0.5, y1=0.2, fillcolor="green", opacity=0.15, annotation_text="Subvalorizado", annotation_position="bottom left")
-    fig.update_layout(
-        template="plotly_dark", height=750, paper_bgcolor="rgba(0,0,0,0)",
-        yaxis=dict(title="Z-Score", side="right", range=[-1.5, 11]),
-        yaxis2=dict(type="log", overlaying="y", side="left", showgrid=False, title="Capitalização (USD)")
-    )
+    fig.add_trace(go.Scatter(x=df_mvrv["Date_Clean"], y=df_mvrv["Z_Calib"], name="Z-Score", line=dict(color="#f39c12"), yaxis="y1"))
+    fig.update_layout(template="plotly_dark", height=600, paper_bgcolor="rgba(0,0,0,0)", yaxis=dict(range=[-1.5, 11]), yaxis2=dict(type="log", overlaying="y", side="left"))
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 7: MÉDIAS MÓVEIS ---
+# --- ABA 8: MÉDIAS MÓVEIS ---
 elif aba == "Médias Móveis":
-    help_ma = "Médias móveis de longo prazo em escala logarítmica. A linha de 200 SMA funciona historicamente como um forte suporte de mercado."
-    st.header("📉 Weekly Moving Averages", help=help_ma)
+    st.header("📉 Weekly Moving Averages")
     asset_name = st.selectbox("Ativo", list(ASSET_TICKERS.keys()))
-
     df_ma = load_data(asset_name)
-    if df_ma.empty:
-        st.stop()
-
+    if df_ma.empty: st.stop()
+        
     df_w = df_ma.set_index("Date_Clean")["Price"].resample("W").last().to_frame()
-
     MA_PERIODS = [20, 50, 100, 200]
-    
-    for p in MA_PERIODS:
-        df_w[f"{p}W SMA"] = df_w["Price"].rolling(window=p).mean()
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_w.index, y=df_w['Price'], name="Preço", line=dict(color="white", width=1.5)))
-    
     MA_COLORS = ["#3b82f6", "#f59e0b", "#ec4899", "#a855f7"]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_w.index, y=df_w['Price'], name="Preço", line=dict(color="white")))
     for p, color in zip(MA_PERIODS, MA_COLORS):
-        # AQUI FOI CORRIGIDO: name=f"{p}W SMA" diretamente, eliminando o operador lógico defeituoso
-        fig.add_trace(go.Scatter(
-            x=df_w.index, 
-            y=df_w[f"{p}W SMA"], 
-            name=f"{p}W SMA", 
-            line=dict(color=color), 
-            opacity=0.8
-        ))
-
-    fig.update_layout(
-        template="plotly_dark", height=750, yaxis_type="log", yaxis_title="Preço (log)", xaxis_title="Data",
-        paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    )
+        df_w[f"{p}W SMA"] = df_w["Price"].rolling(window=p).mean()
+        fig.add_trace(go.Scatter(x=df_w.index, y=df_w[f"{p}W SMA"], name=f"{p}W SMA", line=dict(color=color), opacity=0.7))
+        
+    fig.update_layout(template="plotly_dark", height=600, yaxis_type="log", paper_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, use_container_width=True)
