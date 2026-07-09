@@ -161,8 +161,13 @@ if aba == "Sazonalidade (Heatmap)":
 
     is_sp500 = asset_name == "S&P 500"
     cycle_col = "PresCycle" if is_sp500 else "HalvCycle"
-    cycle_options = ["Todos os Anos"] + (list(PRES_MAP.values()) if is_sp500 else list(HALV_MAP.values()))
-    filter_type = c3.selectbox("Filtrar por Ciclo", cycle_options)
+    
+    # Detecção dinâmica de index para Sazonalidade abrir no ciclo corrente
+    opcoes_ciclo = ["Todos os Anos"] + (list(PRES_MAP.values()) if is_sp500 else list(HALV_MAP.values()))
+    target_string = pres_cycle_atual if is_sp500 else halv_cycle_atual
+    idx_default = opcoes_ciclo.index(target_string) if target_string in opcoes_ciclo else 0
+    
+    filter_type = c3.selectbox("Filtrar por Ciclo", opcoes_ciclo, index=idx_default)
 
     df_main = load_data(asset_name)
     if df_main.empty: st.stop()
@@ -223,14 +228,21 @@ elif aba == "Ciclos de Mercado":
     col_c = "PresCycle" if is_sp500 else "HalvCycle"
     
     if is_sp500:
-        ciclo = c2.selectbox("Fase do Ciclo Político", list(PRES_MAP.values()))
+        lista_opcoes = list(PRES_MAP.values())
+        idx_pres = lista_opcoes.index(pres_cycle_atual) if pres_cycle_atual in lista_opcoes else 0
+        ciclo = c2.selectbox("Fase do Ciclo Político", lista_opcoes, index=idx_pres)
     else:
-        ciclo_tipo = c2.selectbox("Perspetiva de Análise", ["Ciclo de Halving", "Ciclo Político Americano"])
+        # Se for Crypto, abre por defeito no Ciclo de Halving
+        ciclo_tipo = c2.selectbox("Perspetiva de Análise", ["Ciclo de Halving", "Ciclo Político Americano"], index=0)
         if ciclo_tipo == "Ciclo de Halving":
-            ciclo = c3.selectbox("Fase do Halving", list(HALV_MAP.values()))
+            lista_opcoes = list(HALV_MAP.values())
+            idx_halv = lista_opcoes.index(halv_cycle_atual) if halv_cycle_atual in lista_opcoes else 0
+            ciclo = c3.selectbox("Fase do Halving", lista_opcoes, index=idx_halv)
             col_c = "HalvCycle"
         else:
-            ciclo = c3.selectbox("Fase do Ciclo Político", list(PRES_MAP.values()))
+            lista_opcoes = list(PRES_MAP.values())
+            idx_pres = lista_opcoes.index(pres_cycle_atual) if pres_cycle_atual in lista_opcoes else 0
+            ciclo = c3.selectbox("Fase do Ciclo Político", lista_opcoes, index=idx_pres)
             col_c = "PresCycle"
 
     df_cycle = load_data(asset_name)
@@ -253,7 +265,7 @@ elif aba == "Ciclos de Mercado":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA: CICLOS (ITC ADVANCED CORRIGIDO) ---
+# --- ABA: CICLOS (ITC ADVANCED AUTOMATIZADO) ---
 elif aba == "Ciclos (ITC Advanced)":
     st.header("📈 Market Cycle ROI Comparison (ITC Advanced Standard)")
     c1, c2, c3 = st.columns(3)
@@ -263,14 +275,21 @@ elif aba == "Ciclos (ITC Advanced)":
     col_c = "PresCycle" if is_sp500 else "HalvCycle"
     
     if is_sp500:
-        ciclo = c2.selectbox("Fase do Ciclo Político (Advanced)", list(PRES_MAP.values()))
+        lista_opcoes = list(PRES_MAP.values())
+        idx_pres = lista_opcoes.index(pres_cycle_atual) if pres_cycle_atual in lista_opcoes else 0
+        ciclo = c2.selectbox("Fase do Ciclo Político (Advanced)", lista_opcoes, index=idx_pres)
     else:
-        ciclo_tipo = c2.selectbox("Perspetiva de Análise (Advanced)", ["Ciclo de Halving", "Ciclo Político Americano"])
+        # Se o ativo for Cripto, predefinimos o seletor para abrir na perspetiva do Ciclo de Halving ("Bear Year" em 2026)
+        ciclo_tipo = c2.selectbox("Perspetiva de Análise (Advanced)", ["Ciclo de Halving", "Ciclo Político Americano"], index=0)
         if ciclo_tipo == "Ciclo de Halving":
-            ciclo = c3.selectbox("Fase do Halving (Advanced)", list(HALV_MAP.values()))
+            lista_opcoes = list(HALV_MAP.values())
+            idx_halv = lista_opcoes.index(halv_cycle_atual) if halv_cycle_atual in lista_opcoes else 0
+            ciclo = c3.selectbox("Fase do Halving (Advanced)", lista_opcoes, index=idx_halv)
             col_c = "HalvCycle"
         else:
-            ciclo = c3.selectbox("Fase do Ciclo Político (Advanced)", list(PRES_MAP.values()))
+            lista_opcoes = list(PRES_MAP.values())
+            idx_pres = lista_opcoes.index(pres_cycle_atual) if pres_cycle_atual in lista_opcoes else 0
+            ciclo = c3.selectbox("Fase do Ciclo Político (Advanced)", lista_opcoes, index=idx_pres)
             col_c = "PresCycle"
 
     df_cycle = load_data(asset_name)
@@ -286,41 +305,19 @@ elif aba == "Ciclos (ITC Advanced)":
         stats_bounds["upper_sd"] = stats_bounds["mean"] + stats_bounds["std"]
         stats_bounds["lower_sd"] = stats_bounds["mean"] - stats_bounds["std"]
         
-        fig.add_trace(go.Scatter(
-            x=stats_bounds["DayOfYear"], y=stats_bounds["upper_sd"],
-            mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'
-        ))
-        fig.add_trace(go.Scatter(
-            x=stats_bounds["DayOfYear"], y=stats_bounds["lower_sd"],
-            mode='lines', fill='tonexty', 
-            fillcolor='rgba(148, 163, 184, 0.12)', 
-            line=dict(width=0), name="Standard Deviation Range (1σ)", hoverinfo='skip'
-        ))
+        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["upper_sd"], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
+        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["lower_sd"], mode='lines', fill='tonexty', fillcolor='rgba(148, 163, 184, 0.12)', line=dict(width=0), name="Standard Deviation Range (1σ)", hoverinfo='skip'))
 
     for yr in sorted(df_hist["Year"].unique()):
         df_yr = df_hist[df_hist["Year"] == yr]
-        fig.add_trace(go.Scatter(
-            x=df_yr["DayOfYear"], y=df_yr["ROI"], 
-            name=str(yr), text=df_yr["HoverDate"], 
-            hovertemplate="%{text}<br>ROI: %{y:.2f}x", 
-            line=dict(width=1, color="rgba(148, 163, 184, 0.3)"), showlegend=True
-        ))
+        fig.add_trace(go.Scatter(x=df_yr["DayOfYear"], y=df_yr["ROI"], name=str(yr), text=df_yr["HoverDate"], hovertemplate="%{text}<br>ROI: %{y:.2f}x", line=dict(width=1, color="rgba(148, 163, 184, 0.3)"), showlegend=True))
     
     if not df_hist.empty:
-        fig.add_trace(go.Scatter(
-            x=stats_bounds["DayOfYear"], y=stats_bounds["mean"], 
-            name="Média do Ciclo (Avg)", 
-            line=dict(color="#ffffff", dash="dash", width=2)
-        ))
+        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["mean"], name="Média do Ciclo (Avg)", line=dict(color="#ffffff", dash="dash", width=2)))
     
     df_curr = df_cycle[df_cycle["Year"] == ano_atual]
     if not df_curr.empty:
-        fig.add_trace(go.Scatter(
-            x=df_curr["DayOfYear"], y=df_curr["ROI"], 
-            name=f"{ano_atual} (Current)", text=df_curr["HoverDate"], 
-            hovertemplate="%{text}<br>ROI: %{y:.2f}x", 
-            line=dict(color="#ef4444", width=3)
-        ))
+        fig.add_trace(go.Scatter(x=df_curr["DayOfYear"], y=df_curr["ROI"], name=f"{ano_atual} (Current)", text=df_curr["HoverDate"], hovertemplate="%{text}<br>ROI: %{y:.2f}x", line=dict(color="#ef4444", width=3)))
 
     meses_ticks_pos = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
     meses_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
