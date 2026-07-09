@@ -152,9 +152,10 @@ with st.sidebar:
         f"🇺🇸 Ciclo: **{pres_cycle_atual}**\n\n"
         f"₿ Ciclo: **{halv_cycle_atual}**"
     )
+    # LINHA ADICIONADA: "Ciclos (ITC Advanced)" acoplada aqui no menu de seleção
     aba = st.radio(
         "Selecione a Análise:",
-        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "Rainbow Ribbon (Smart)", "Social Risk (Sentiment)", "MVRV Z-Score", "Médias Móveis"],
+        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Ciclos (ITC Advanced)", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "Rainbow Ribbon (Smart)", "Social Risk (Sentiment)", "MVRV Z-Score", "Médias Móveis"],
     )
 
 
@@ -222,9 +223,9 @@ if aba == "Sazonalidade (Heatmap)":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 2: CICLOS DE MERCADO ---
+# --- ABA 2: CICLOS DE MERCADO (A TUA VERSÃO ORIGINAL COM LINHAS) ---
 elif aba == "Ciclos de Mercado":
-    st.header("📈 Market Cycle ROI Comparison")
+    st.header("📈 Market Cycle ROI Comparison (Classic Lines)")
     c1, c2, c3 = st.columns(3)
     asset_name = c1.selectbox("Ativo", list(ASSET_TICKERS.keys()))
 
@@ -262,7 +263,61 @@ elif aba == "Ciclos de Mercado":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 3: RISK METRIC (DCA) ---
+# --- VERSÃO EXPERIMENTAL SOLICITADA: CICLOS (ITC ADVANCED COM SOMBRAS E MESES) ---
+elif aba == "Ciclos (ITC Advanced)":
+    st.header("📈 Market Cycle ROI Comparison (ITC Advanced Standard)")
+    c1, c2, c3 = st.columns(3)
+    asset_name = c1.selectbox("Ativo (Advanced)", list(ASSET_TICKERS.keys()))
+
+    is_sp500 = asset_name == "S&P 500"
+    col_c = "PresCycle" if is_sp500 else "HalvCycle"
+    
+    if is_sp500:
+        ciclo = c2.selectbox("Fase do Ciclo Político (Advanced)", list(PRES_MAP.values()))
+    else:
+        ciclo_tipo = c2.selectbox("Perspetiva de Análise (Advanced)", ["Ciclo de Halving", "Ciclo Político Americano"])
+        if ciclo_tipo == "Ciclo de Halving":
+            ciclo = c3.selectbox("Fase do Halving (Advanced)", list(HALV_MAP.values()))
+            col_c = "HalvCycle"
+        else:
+            ciclo = c3.selectbox("Fase do Ciclo Político (Advanced)", list(PRES_MAP.values()))
+            col_c = "PresCycle"
+
+    df_cycle = load_data(asset_name)
+    if df_cycle.empty: st.stop()
+
+    fig = go.Figure()
+    df_hist = df_cycle[(df_cycle[col_c] == ciclo) & (df_cycle["Year"] < ano_atual)]
+    
+    if not df_hist.empty:
+        stats_bounds = df_hist.groupby("DayOfYear")["ROI"].agg(["min", "max", "mean"]).reset_index()
+        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["max"], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
+        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["min"], mode='lines', fill='tonexty', fillcolor='rgba(148, 163, 184, 0.15)', line=dict(width=0), name="Standard Deviation Range / Bounds", hoverinfo='skip'))
+
+    for yr in sorted(df_hist["Year"].unique()):
+        df_yr = df_hist[df_hist["Year"] == yr]
+        fig.add_trace(go.Scatter(x=df_yr["DayOfYear"], y=df_yr["ROI"], name=str(yr), text=df_yr["HoverDate"], hovertemplate="%{text}<br>ROI: %{y:.2f}x", line=dict(width=1), opacity=0.4))
+    
+    if not df_hist.empty:
+        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["mean"], name="Média do Ciclo (Avg)", line=dict(color="#ffffff", dash="dash", width=2)))
+    
+    df_curr = df_cycle[df_cycle["Year"] == ano_atual]
+    if not df_curr.empty:
+        fig.add_trace(go.Scatter(x=df_curr["DayOfYear"], y=df_curr["ROI"], name=str(ano_atual), text=df_curr["HoverDate"], hovertemplate="%{text}<br>ROI: %{y:.2f}x", line=dict(color="#ef4444", width=3)))
+
+    meses_ticks_pos = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+    meses_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    fig.update_layout(
+        template="plotly_dark", height=650, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(title="Month", tickmode='array', tickvals=meses_ticks_pos, ticktext=meses_labels, showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
+        yaxis=dict(title="ROI (Year-To-Date)", showgrid=True, gridcolor='rgba(255,255,255,0.05)'),
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# --- ABA 4: RISK METRIC (DCA) ---
 elif aba == "Risk Metric (DCA)":
     st.header("📊 Into The Cryptoverse Risk Metric & Dynamic DCA")
     asset_name = st.selectbox("Selecione o Ativo para Análise de Risco", ["Bitcoin (BTC)", "Ethereum (ETH)"])
@@ -302,7 +357,7 @@ elif aba == "Risk Metric (DCA)":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 4: CYCLE REPEAT (BITBO) ---
+# --- ABA 5: CYCLE REPEAT (BITBO) ---
 elif aba == "Cycle Repeat (Bitbo)":
     st.header("🔄 Cycle Repeat & Trajectory Projection")
     asset_name = st.selectbox("Selecione o Ativo para Projeção", ["Bitcoin (BTC)", "Ethereum (ETH)"])
@@ -328,7 +383,7 @@ elif aba == "Cycle Repeat (Bitbo)":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 5: RAINBOW RIBBON (SMART) ---
+# --- ABA 6: RAINBOW RIBBON (SMART) ---
 elif aba == "Rainbow Ribbon (Smart)":
     st.header("🌈 Into The Cryptoverse Smart Rainbow Ribbon")
     asset_name = st.selectbox("Selecione o Ativo para o Arco-Íris", list(ASSET_TICKERS.keys()))
@@ -351,7 +406,7 @@ elif aba == "Rainbow Ribbon (Smart)":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 6: SOCIAL RISK (SENTIMENT) ---
+# --- ABA 7: SOCIAL RISK (SENTIMENT) ---
 elif aba == "Social Risk (Sentiment)":
     st.header("📢 Social Sentiment Risk Monitor (Proxy Real-Time)")
     col_in1, col_in2 = st.columns(2)
@@ -384,7 +439,7 @@ elif aba == "Social Risk (Sentiment)":
     st.plotly_chart(fig_gauge, use_container_width=True)
 
 
-# --- ABA 7: MVRV Z-SCORE ---
+# --- ABA 8: MVRV Z-SCORE ---
 elif aba == "MVRV Z-Score":
     st.header("📈 Bitcoin MVRV Z-Score (On-Chain Approximado)")
     df_mvrv = load_data("Bitcoin (BTC)")
@@ -403,7 +458,7 @@ elif aba == "MVRV Z-Score":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 8: MÉDIAS MÓVEIS ---
+# --- ABA 9: MÉDIAS MÓVEIS ---
 elif aba == "Médias Móveis":
     st.header("📉 Weekly Moving Averages")
     asset_name = st.selectbox("Ativo", list(ASSET_TICKERS.keys()))
