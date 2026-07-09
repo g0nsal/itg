@@ -22,7 +22,7 @@ ASSET_START = {
     "S&P 500": "1927-12-30",
 }
 
-# Ciclos de Halving — ancorado no halving real de 2024
+# Ciclos de Halving
 HALVING_BASE = 2024
 HALV_MAP = {
     0: "Halving Year",
@@ -31,7 +31,7 @@ HALV_MAP = {
     3: "Pre-Halving Year",
 }
 
-# Ciclos Presidenciais — ancorado em 2024 (Election Year)
+# Ciclos Presidenciais
 PRES_BASE = 2024
 PRES_MAP = {
     0: "Election Year",
@@ -65,7 +65,6 @@ st.markdown("""
 # --- 2. CACHE DE DADOS ---
 @st.cache_data(ttl=3600)
 def fetch_raw_prices(ticker: str, start_date: str) -> pd.DataFrame:
-    """Download dos preços brutos do yfinance."""
     try:
         raw = yf.download(ticker, start=start_date, auto_adjust=True, progress=False)
         if raw.empty:
@@ -80,14 +79,12 @@ def fetch_raw_prices(ticker: str, start_date: str) -> pd.DataFrame:
 
 @st.cache_data
 def process_data(raw: pd.DataFrame) -> pd.DataFrame:
-    """Processamento e enriquecimento dos dados."""
     if raw.empty:
         return pd.DataFrame()
 
     df = raw.copy()
     df.columns = ["Date", "Price"]
     df["Date_Clean"] = pd.to_datetime(df["Date"]).dt.tz_localize(None)
-
     df = df[~((df["Date_Clean"].dt.month == 2) & (df["Date_Clean"].dt.day == 29))]
 
     df["Year"] = df["Date_Clean"].dt.year
@@ -103,12 +100,10 @@ def process_data(raw: pd.DataFrame) -> pd.DataFrame:
 
     base_dates = [(datetime(2023, 1, 1) + timedelta(days=i)).strftime("%d/%b") for i in range(366)]
     df["HoverDate"] = df["DayOfYear"].apply(lambda x: base_dates[min(int(x) - 1, 365)])
-
     return df
 
 
 def load_data(asset_name: str) -> pd.DataFrame:
-    """Carrega e processa dados para o ativo selecionado."""
     ticker = ASSET_TICKERS[asset_name]
     start = ASSET_START[asset_name]
     raw = fetch_raw_prices(ticker, start)
@@ -119,7 +114,6 @@ def load_data(asset_name: str) -> pd.DataFrame:
 
 
 def supply_btc_aproximado(date: datetime) -> float:
-    """Estima o supply circulante do BTC com base na data."""
     halvings = [
         (datetime(2009, 1, 3), 50),
         (datetime(2012, 11, 28), 25),
@@ -152,7 +146,6 @@ with st.sidebar:
         f"🇺🇸 Ciclo: **{pres_cycle_atual}**\n\n"
         f"₿ Ciclo: **{halv_cycle_atual}**"
     )
-    # LINHA ADICIONADA: "Ciclos (ITC Advanced)" acoplada aqui no menu de seleção
     aba = st.radio(
         "Selecione a Análise:",
         ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Ciclos (ITC Advanced)", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "Rainbow Ribbon (Smart)", "Social Risk (Sentiment)", "MVRV Z-Score", "Médias Móveis"],
@@ -161,9 +154,7 @@ with st.sidebar:
 
 # --- ABA 1: SAZONALIDADE ---
 if aba == "Sazonalidade (Heatmap)":
-    help_heat = """Retornos percentuais históricos. Verde: positivo. Vermelho: negativo."""
-    st.header("📅 Seasonality Returns", help=help_heat)
-    
+    st.header("📅 Seasonality Returns")
     c1, c2, c3 = st.columns(3)
     asset_name = c1.selectbox("Ativo", list(ASSET_TICKERS.keys()))
     view_mode = c2.selectbox("Frequência", ["Monthly Returns (%)", "Quarterly Returns (%)"])
@@ -174,8 +165,7 @@ if aba == "Sazonalidade (Heatmap)":
     filter_type = c3.selectbox("Filtrar por Ciclo", cycle_options)
 
     df_main = load_data(asset_name)
-    if df_main.empty:
-        st.stop()
+    if df_main.empty: st.stop()
 
     df_h = df_main[df_main[cycle_col] == filter_type] if filter_type != "Todos os Anos" else df_main
 
@@ -223,7 +213,7 @@ if aba == "Sazonalidade (Heatmap)":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 2: CICLOS DE MERCADO (A TUA VERSÃO ORIGINAL COM LINHAS) ---
+# --- ABA 2: CICLOS DE MERCADO ---
 elif aba == "Ciclos de Mercado":
     st.header("📈 Market Cycle ROI Comparison (Classic Lines)")
     c1, c2, c3 = st.columns(3)
@@ -263,7 +253,7 @@ elif aba == "Ciclos de Mercado":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA: CICLOS (ITC ADVANCED COM SOMBRAS E MESES CORRIGIDO) ---
+# --- ABA: CICLOS (ITC ADVANCED CORRIGIDO) ---
 elif aba == "Ciclos (ITC Advanced)":
     st.header("📈 Market Cycle ROI Comparison (ITC Advanced Standard)")
     c1, c2, c3 = st.columns(3)
@@ -290,29 +280,23 @@ elif aba == "Ciclos (ITC Advanced)":
     df_hist = df_cycle[(df_cycle[col_c] == ciclo) & (df_cycle["Year"] < ano_atual)]
     
     if not df_hist.empty:
-        # CÁLCULO FIDEDIGNO: Média e Desvio Padrão por Dia do Ano
         stats_bounds = df_hist.groupby("DayOfYear")["ROI"].agg(["mean", "std"]).reset_index()
-        # Se houver apenas 1 ano histórico, o std dá NaN. Preenchemos com 0 se necessário.
         stats_bounds["std"] = stats_bounds["std"].fillna(0)
         
-        # Definição das Bandas de Desvio Padrão (Upper e Lower SD)
         stats_bounds["upper_sd"] = stats_bounds["mean"] + stats_bounds["std"]
         stats_bounds["lower_sd"] = stats_bounds["mean"] - stats_bounds["std"]
         
-        # Desenhar a linha superior invisível da banda
         fig.add_trace(go.Scatter(
             x=stats_bounds["DayOfYear"], y=stats_bounds["upper_sd"],
             mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'
         ))
-        # Preencher até à linha inferior (Criando a Nuvem de Desvio Padrão do ITC)
         fig.add_trace(go.Scatter(
             x=stats_bounds["DayOfYear"], y=stats_bounds["lower_sd"],
             mode='lines', fill='tonexty', 
-            fillcolor='rgba(148, 163, 184, 0.12)', # Tom cinza semi-transparente idêntico ao original
+            fillcolor='rgba(148, 163, 184, 0.12)', 
             line=dict(width=0), name="Standard Deviation Range (1σ)", hoverinfo='skip'
         ))
 
-    # Desenhar os anos anteriores em segundo plano (Linhas finas e discretas)
     for yr in sorted(df_hist["Year"].unique()):
         df_yr = df_hist[df_hist["Year"] == yr]
         fig.add_trace(go.Scatter(
@@ -322,7 +306,6 @@ elif aba == "Ciclos (ITC Advanced)":
             line=dict(width=1, color="rgba(148, 163, 184, 0.3)"), showlegend=True
         ))
     
-    # Desenhar a Média do Ciclo (Linha Tracejada Branca)
     if not df_hist.empty:
         fig.add_trace(go.Scatter(
             x=stats_bounds["DayOfYear"], y=stats_bounds["mean"], 
@@ -330,14 +313,13 @@ elif aba == "Ciclos (ITC Advanced)":
             line=dict(color="#ffffff", dash="dash", width=2)
         ))
     
-    # Desenhar o Ano Atual (Linha Vermelha de Destaque - 2026)
     df_curr = df_cycle[df_cycle["Year"] == ano_atual]
     if not df_curr.empty:
         fig.add_trace(go.Scatter(
             x=df_curr["DayOfYear"], y=df_curr["ROI"], 
             name=f"{ano_atual} (Current)", text=df_curr["HoverDate"], 
             hovertemplate="%{text}<br>ROI: %{y:.2f}x", 
-            line=dict(color="#ef4444", width=3) # Cor vermelha exata da imagem do ITC
+            line=dict(color="#ef4444", width=3)
         ))
 
     meses_ticks_pos = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
