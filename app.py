@@ -263,7 +263,7 @@ elif aba == "Ciclos de Mercado":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- VERSÃO EXPERIMENTAL SOLICITADA: CICLOS (ITC ADVANCED COM SOMBRAS E MESES) ---
+# --- ABA: CICLOS (ITC ADVANCED COM SOMBRAS E MESES CORRIGIDO) ---
 elif aba == "Ciclos (ITC Advanced)":
     st.header("📈 Market Cycle ROI Comparison (ITC Advanced Standard)")
     c1, c2, c3 = st.columns(3)
@@ -290,20 +290,55 @@ elif aba == "Ciclos (ITC Advanced)":
     df_hist = df_cycle[(df_cycle[col_c] == ciclo) & (df_cycle["Year"] < ano_atual)]
     
     if not df_hist.empty:
-        stats_bounds = df_hist.groupby("DayOfYear")["ROI"].agg(["min", "max", "mean"]).reset_index()
-        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["max"], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
-        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["min"], mode='lines', fill='tonexty', fillcolor='rgba(148, 163, 184, 0.15)', line=dict(width=0), name="Standard Deviation Range / Bounds", hoverinfo='skip'))
+        # CÁLCULO FIDEDIGNO: Média e Desvio Padrão por Dia do Ano
+        stats_bounds = df_hist.groupby("DayOfYear")["ROI"].agg(["mean", "std"]).reset_index()
+        # Se houver apenas 1 ano histórico, o std dá NaN. Preenchemos com 0 se necessário.
+        stats_bounds["std"] = stats_bounds["std"].fillna(0)
+        
+        # Definição das Bandas de Desvio Padrão (Upper e Lower SD)
+        stats_bounds["upper_sd"] = stats_bounds["mean"] + stats_bounds["std"]
+        stats_bounds["lower_sd"] = stats_bounds["mean"] - stats_bounds["std"]
+        
+        # Desenhar a linha superior invisível da banda
+        fig.add_trace(go.Scatter(
+            x=stats_bounds["DayOfYear"], y=stats_bounds["upper_sd"],
+            mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'
+        ))
+        # Preencher até à linha inferior (Criando a Nuvem de Desvio Padrão do ITC)
+        fig.add_trace(go.Scatter(
+            x=stats_bounds["DayOfYear"], y=stats_bounds["lower_sd"],
+            mode='lines', fill='tonexty', 
+            fillcolor='rgba(148, 163, 184, 0.12)', # Tom cinza semi-transparente idêntico ao original
+            line=dict(width=0), name="Standard Deviation Range (1σ)", hoverinfo='skip'
+        ))
 
+    # Desenhar os anos anteriores em segundo plano (Linhas finas e discretas)
     for yr in sorted(df_hist["Year"].unique()):
         df_yr = df_hist[df_hist["Year"] == yr]
-        fig.add_trace(go.Scatter(x=df_yr["DayOfYear"], y=df_yr["ROI"], name=str(yr), text=df_yr["HoverDate"], hovertemplate="%{text}<br>ROI: %{y:.2f}x", line=dict(width=1), opacity=0.4))
+        fig.add_trace(go.Scatter(
+            x=df_yr["DayOfYear"], y=df_yr["ROI"], 
+            name=str(yr), text=df_yr["HoverDate"], 
+            hovertemplate="%{text}<br>ROI: %{y:.2f}x", 
+            line=dict(width=1, color="rgba(148, 163, 184, 0.3)"), showlegend=True
+        ))
     
+    # Desenhar a Média do Ciclo (Linha Tracejada Branca)
     if not df_hist.empty:
-        fig.add_trace(go.Scatter(x=stats_bounds["DayOfYear"], y=stats_bounds["mean"], name="Média do Ciclo (Avg)", line=dict(color="#ffffff", dash="dash", width=2)))
+        fig.add_trace(go.Scatter(
+            x=stats_bounds["DayOfYear"], y=stats_bounds["mean"], 
+            name="Média do Ciclo (Avg)", 
+            line=dict(color="#ffffff", dash="dash", width=2)
+        ))
     
+    # Desenhar o Ano Atual (Linha Vermelha de Destaque - 2026)
     df_curr = df_cycle[df_cycle["Year"] == ano_atual]
     if not df_curr.empty:
-        fig.add_trace(go.Scatter(x=df_curr["DayOfYear"], y=df_curr["ROI"], name=str(ano_atual), text=df_curr["HoverDate"], hovertemplate="%{text}<br>ROI: %{y:.2f}x", line=dict(color="#ef4444", width=3)))
+        fig.add_trace(go.Scatter(
+            x=df_curr["DayOfYear"], y=df_curr["ROI"], 
+            name=f"{ano_atual} (Current)", text=df_curr["HoverDate"], 
+            hovertemplate="%{text}<br>ROI: %{y:.2f}x", 
+            line=dict(color="#ef4444", width=3) # Cor vermelha exata da imagem do ITC
+        ))
 
     meses_ticks_pos = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
     meses_labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
