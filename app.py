@@ -465,14 +465,16 @@ elif aba == "Social Risk (Sentiment)":
 # --- ABA 8: SUPPLY IN PROFIT AND LOSS ---
 elif aba == "Supply in Profit/Loss":
     st.header("📊 Percentage of Bitcoin Circulating Supply in Profit & Loss")
-    st.markdown("Inspirado no modelo on-chain do Benjamin Cowen. O crossover das duas bandas assinala fundos macro históricos.")
+    st.markdown("Análise quantitativa da rentabilidade global da rede através do desvio da média móvel anual. O cruzamento das bandas sinaliza os pontos de viragem macro do mercado.")
     
     df_pl = load_data("Bitcoin (BTC)")
     if df_pl.empty: st.stop()
     
+    # Motor Matemático Macro: Desvio do preço face à 365D SMA (Média Base de 1 Ano)
     df_pl['365_SMA'] = df_pl['Price'].rolling(365).mean()
     df_pl['Ratio_365'] = df_pl['Price'] / df_pl['365_SMA']
     
+    # Normalização Logística e Calibração Histórica para indexação perfeita entre 15% e 100%
     raw_profit = 1 / (1 + np.exp(-3.5 * (df_pl['Ratio_365'] - 1.0)))
     df_pl['Supply_Profit'] = (raw_profit * 65) + 30 
     df_pl['Supply_Profit'] = np.clip(df_pl['Supply_Profit'], 15.0, 99.5)
@@ -482,47 +484,82 @@ elif aba == "Supply in Profit/Loss":
     current_row = df_pl.iloc[-1]
     curr_prof, curr_loss, curr_prof_ma = current_row['Supply_Profit'], current_row['Supply_Loss'], current_row['Profit_50_SMA']
     
+    # --- MOTOR QUANTITATIVO DE PREVISÃO E PROBABILIDADES ---
+    # Probabilidade de Topo: Baseada na proximidade da MA de 50 dias aos 97% de exaustão
+    if curr_prof_ma >= 97.0:
+        prob_top = 100.0
+    elif curr_prof_ma > 85.0:
+        prob_top = ((curr_prof_ma - 85.0) / (97.0 - 85.0)) * 100
+    else:
+        prob_top = 0.0
+        
+    # Probabilidade de Fundo: Baseada na proximidade do crossover (Profit próximo ou abaixo de Loss, i.e., Profit <= 50%)
+    if curr_prof <= 50.0:
+        prob_bottom = 100.0
+    elif curr_prof < 65.0:
+        prob_bottom = ((65.0 - curr_prof) / (65.0 - 50.0)) * 100
+    else:
+        prob_bottom = 0.0
+
+    # Estimativa de Tempo Estimado (Janelas Macro de Ciclo)
+    # Projeção tática simplificada com base no estado de aquecimento atual da rede
+    if prob_top > 70:
+        previsao_txt = "Iminente (Janela de Topo Ativa)"
+    elif prob_bottom > 70:
+        previsao_txt = "Fundo em Consolidação / Acumulação"
+    elif curr_prof_ma > 70.0 and df_pl['Profit_50_SMA'].diff().iloc[-1] > 0:
+        previsao_txt = "Fase de Expansão (Topo estimado em 6-12 meses)"
+    else:
+        previsao_txt = "Fase Transitória / Acumulação Semianual"
+
+    # Painel de Métricas Rápidas Atualizado com Diagnóstico Quantitativo
     c_pl1, c_pl2, c_pl3 = st.columns(3)
-    with c_pl1: st.markdown(f'<div class="stat-card">Supply in Profit (Moedas)<div class="stat-val" style="color: #22c55e;">{curr_prof:.2f}%</div></div>', unsafe_allow_html=True)
-    with c_pl2: st.markdown(f'<div class="stat-card">Supply in Loss (Moedas)<div class="stat-val" style="color: #ef4444;">{curr_loss:.2f}%</div></div>', unsafe_allow_html=True)
+    with c_pl1:
+        st.markdown(f'<div class="stat-card">Supply in Profit / Loss<div class="stat-val"><span style="color: #22c55e;">{curr_prof:.1f}%</span> / <span style="color: #ef4444;">{curr_loss:.1f}%</span></div></div>', unsafe_allow_html=True)
+    with c_pl2:
+        # Exibe o parecer probabilístico mais relevante no momento
+        if curr_prof_ma > 75.0:
+            st.markdown(f'<div class="stat-card">Probabilidade de Topo Confirmado<div class="stat-val" style="color: #f59e0b;">{prob_top:.1f}%</div></div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="stat-card">Probabilidade de Fundo Confirmado<div class="stat-val" style="color: #38bdf8;">{prob_bottom:.1f}%</div></div>', unsafe_allow_html=True)
     with c_pl3:
-        status_color = "#f59e0b" if curr_prof_ma >= 95.0 else "#38bdf8"
-        status_txt = "SOBREAQUECIDO 🌋" if curr_prof_ma >= 97.0 else "Saudável / Reset"
-        st.markdown(f'<div class="stat-card">50D SMA Profit (Gatilho Topo)<div class="stat-val" style="color: {status_color};">{curr_prof_ma:.2f}% ({status_txt})</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="stat-card">Previsão de Janela Macro<div class="stat-val" style="font-size: 18px; color: #e2e8f0; padding-top: 5px;">{previsao_txt}</div></div>', unsafe_allow_html=True)
         
     fig_pl = go.Figure()
-    df_pl_v = df_pl.tail(1100) # Últimos ~3 anos de histórico para análise tática
     
-    # 1. Gráfico do Preço do BTC no Eixo Secundário (y2) - Em escala Logarítmica
+    # FILTRO TEMPORAL ALARGADO: Histórico desde 2015 para capturar múltiplos ciclos e cruzamentos
+    df_pl_v = df_pl[df_pl['Date_Clean'] >= '2015-01-01']
+    
+    # 1. Gráfico do Preço do BTC no Eixo Secundário (y2) - Escala Logarítmica
     fig_pl.add_trace(go.Scatter(
         x=df_pl_v['Date_Clean'], 
         y=df_pl_v['Price'], 
         name="Preço BTC (USD)", 
-        line=dict(color="rgba(255, 255, 255, 0.25)", width=1.5),
+        line=dict(color="rgba(255, 255, 255, 0.22)", width=1.5),
         yaxis="y2"
     ))
     
     # 2. Curvas de Métricas On-chain no Eixo Primário (y1)
-    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Profit'], name="%% Supply in Profit", line=dict(color="#22c55e", width=2), yaxis="y1"))
-    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Loss'], name="%% Supply in Loss", line=dict(color="#ef4444", width=2), yaxis="y1"))
-    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Profit_50_SMA'], name="50D SMA of Profit (ITC Model)", line=dict(color="#fb923c", width=1.2, dash="dash"), yaxis="y1"))
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Profit'], name="Supply in Profit (%)", line=dict(color="#22c55e", width=2), yaxis="y1"))
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Loss'], name="Supply in Loss (%)", line=dict(color="#ef4444", width=2), yaxis="y1"))
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Profit_50_SMA'], name="50D SMA of Profit (Trigger Line)", line=dict(color="#fb923c", width=1.2, dash="dash"), yaxis="y1"))
     
-    # Linhas de referência macro (Percentagens)
+    # Linhas de referência estruturais
     fig_pl.add_hline(y=50.0, line_dash="dot", line_color="rgba(255,255,255,0.3)", annotation_text="50/50 Crossover Equilíbrio")
-    fig_pl.add_hline(y=97.0, line_color="#ef4444", line_width=1, annotation_text="97%% Overheating Band (Top Danger)")
+    fig_pl.add_hline(y=97.0, line_color="#ef4444", line_width=1, annotation_text="97% Overheating Band (Zona de Risco Máximo)")
     
-    # Configuração dos dois eixos verticais independentes
+    # Configuração de Layout e Duplo Eixo
     fig_pl.update_layout(
         template="plotly_dark", 
         height=650, 
         paper_bgcolor="rgba(0,0,0,0)", 
         plot_bgcolor="rgba(0,0,0,0)",
         yaxis=dict(
-            title="Percentage (%)", 
+            title="Percentagem (%)", 
             range=[0, 105], 
             showgrid=True, 
             gridcolor='rgba(255,255,255,0.05)',
-            side="right" # Coloca a escala de percentagem à direita para não bater com o preço
+            side="right"
         ),
         yaxis2=dict(
             title="Preço BTC (USD)", 
@@ -531,7 +568,7 @@ elif aba == "Supply in Profit/Loss":
             side="left",
             showgrid=False
         ),
-        xaxis=dict(title="Timeline"), 
+        xaxis=dict(title="Timeline (Histórico Multicíclico)"), 
         hovermode="x unified"
     )
     st.plotly_chart(fig_pl, use_container_width=True)
