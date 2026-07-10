@@ -491,16 +491,49 @@ elif aba == "Supply in Profit/Loss":
         st.markdown(f'<div class="stat-card">50D SMA Profit (Gatilho Topo)<div class="stat-val" style="color: {status_color};">{curr_prof_ma:.2f}% ({status_txt})</div></div>', unsafe_allow_html=True)
         
     fig_pl = go.Figure()
-    df_pl_v = df_pl.tail(1100)
+    df_pl_v = df_pl.tail(1100) # Últimos ~3 anos de histórico para análise tática
     
-    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Profit'], name="%% Supply in Profit", line=dict(color="#22c55e", width=2)))
-    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Loss'], name="%% Supply in Loss", line=dict(color="#ef4444", width=2)))
-    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Profit_50_SMA'], name="50D SMA of Profit (ITC Model)", line=dict(color="#fb923c", width=1.2, dash="dash")))
+    # 1. Gráfico do Preço do BTC no Eixo Secundário (y2) - Em escala Logarítmica
+    fig_pl.add_trace(go.Scatter(
+        x=df_pl_v['Date_Clean'], 
+        y=df_pl_v['Price'], 
+        name="Preço BTC (USD)", 
+        line=dict(color="rgba(255, 255, 255, 0.25)", width=1.5),
+        yaxis="y2"
+    ))
     
+    # 2. Curvas de Métricas On-chain no Eixo Primário (y1)
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Profit'], name="%% Supply in Profit", line=dict(color="#22c55e", width=2), yaxis="y1"))
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Loss'], name="%% Supply in Loss", line=dict(color="#ef4444", width=2), yaxis="y1"))
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Profit_50_SMA'], name="50D SMA of Profit (ITC Model)", line=dict(color="#fb923c", width=1.2, dash="dash"), yaxis="y1"))
+    
+    # Linhas de referência macro (Percentagens)
     fig_pl.add_hline(y=50.0, line_dash="dot", line_color="rgba(255,255,255,0.3)", annotation_text="50/50 Crossover Equilíbrio")
     fig_pl.add_hline(y=97.0, line_color="#ef4444", line_width=1, annotation_text="97%% Overheating Band (Top Danger)")
     
-    fig_pl.update_layout(template="plotly_dark", height=600, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(range=[0, 105]))
+    # Configuração dos dois eixos verticais independentes
+    fig_pl.update_layout(
+        template="plotly_dark", 
+        height=650, 
+        paper_bgcolor="rgba(0,0,0,0)", 
+        plot_bgcolor="rgba(0,0,0,0)",
+        yaxis=dict(
+            title="Percentage (%)", 
+            range=[0, 105], 
+            showgrid=True, 
+            gridcolor='rgba(255,255,255,0.05)',
+            side="right" # Coloca a escala de percentagem à direita para não bater com o preço
+        ),
+        yaxis2=dict(
+            title="Preço BTC (USD)", 
+            type="log", 
+            overlaying="y", 
+            side="left",
+            showgrid=False
+        ),
+        xaxis=dict(title="Timeline"), 
+        hovermode="x unified"
+    )
     st.plotly_chart(fig_pl, use_container_width=True)
 
 
