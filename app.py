@@ -146,9 +146,21 @@ with st.sidebar:
         f"🇺🇸 Ciclo: **{pres_cycle_atual}**\n\n"
         f"₿ Ciclo: **{halv_cycle_atual}**"
     )
+    # Lista limpa de 10 opções explícitas
     aba = st.radio(
         "Selecione a Análise:",
-        ["Sazonalidade (Heatmap)", "Ciclos de Mercado", "Ciclos (ITC Advanced)", "Risk Metric (DCA)", "Cycle Repeat (Bitbo)", "Rainbow Ribbon (Smart)", "Social Risk (Sentiment)", "MVRV Z-Score", "Médias Móveis"],
+        [
+            "Sazonalidade (Heatmap)", 
+            "Ciclos de Mercado", 
+            "Ciclos (ITC Advanced)", 
+            "Risk Metric (DCA)", 
+            "Cycle Repeat (Bitbo)", 
+            "Rainbow Ribbon (Smart)", 
+            "Social Risk (Sentiment)", 
+            "Supply in Profit/Loss", 
+            "MVRV Z-Score", 
+            "Médias Móveis"
+        ],
     )
 
 
@@ -162,7 +174,6 @@ if aba == "Sazonalidade (Heatmap)":
     is_sp500 = asset_name == "S&P 500"
     cycle_col = "PresCycle" if is_sp500 else "HalvCycle"
     
-    # Detecção dinâmica de index para Sazonalidade abrir no ciclo corrente
     opcoes_ciclo = ["Todos os Anos"] + (list(PRES_MAP.values()) if is_sp500 else list(HALV_MAP.values()))
     target_string = pres_cycle_atual if is_sp500 else halv_cycle_atual
     idx_default = opcoes_ciclo.index(target_string) if target_string in opcoes_ciclo else 0
@@ -232,12 +243,11 @@ elif aba == "Ciclos de Mercado":
         idx_pres = lista_opcoes.index(pres_cycle_atual) if pres_cycle_atual in lista_opcoes else 0
         ciclo = c2.selectbox("Fase do Ciclo Político", lista_opcoes, index=idx_pres)
     else:
-        # Se for Crypto, abre por defeito no Ciclo de Halving
         ciclo_tipo = c2.selectbox("Perspetiva de Análise", ["Ciclo de Halving", "Ciclo Político Americano"], index=0)
         if ciclo_tipo == "Ciclo de Halving":
             lista_opcoes = list(HALV_MAP.values())
             idx_halv = lista_opcoes.index(halv_cycle_atual) if halv_cycle_atual in lista_opcoes else 0
-            ciclo = c3.selectbox("Fase do Halving", lista_opcoes, index=idx_halv)
+            ciclo = c3.selectbox("Fase do Halving", list(HALV_MAP.values()), index=idx_halv)
             col_c = "HalvCycle"
         else:
             lista_opcoes = list(PRES_MAP.values())
@@ -265,7 +275,7 @@ elif aba == "Ciclos de Mercado":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA: CICLOS (ITC ADVANCED AUTOMATIZADO) ---
+# --- ABA 3: CICLOS (ITC ADVANCED AUTOMATIZADO) ---
 elif aba == "Ciclos (ITC Advanced)":
     st.header("📈 Market Cycle ROI Comparison (ITC Advanced Standard)")
     c1, c2, c3 = st.columns(3)
@@ -279,7 +289,6 @@ elif aba == "Ciclos (ITC Advanced)":
         idx_pres = lista_opcoes.index(pres_cycle_atual) if pres_cycle_atual in lista_opcoes else 0
         ciclo = c2.selectbox("Fase do Ciclo Político (Advanced)", lista_opcoes, index=idx_pres)
     else:
-        # Se o ativo for Cripto, predefinimos o seletor para abrir na perspetiva do Ciclo de Halving ("Bear Year" em 2026)
         ciclo_tipo = c2.selectbox("Perspetiva de Análise (Advanced)", ["Ciclo de Halving", "Ciclo Político Americano"], index=0)
         if ciclo_tipo == "Ciclo de Halving":
             lista_opcoes = list(HALV_MAP.values())
@@ -453,7 +462,49 @@ elif aba == "Social Risk (Sentiment)":
     st.plotly_chart(fig_gauge, use_container_width=True)
 
 
-# --- ABA 8: MVRV Z-SCORE ---
+# --- ABA 8: SUPPLY IN PROFIT AND LOSS ---
+elif aba == "Supply in Profit/Loss":
+    st.header("📊 Percentage of Bitcoin Circulating Supply in Profit & Loss")
+    st.markdown("Inspirado no modelo on-chain do Benjamin Cowen. O crossover das duas bandas assinala fundos macro históricos.")
+    
+    df_pl = load_data("Bitcoin (BTC)")
+    if df_pl.empty: st.stop()
+    
+    df_pl['365_SMA'] = df_pl['Price'].rolling(365).mean()
+    df_pl['Ratio_365'] = df_pl['Price'] / df_pl['365_SMA']
+    
+    raw_profit = 1 / (1 + np.exp(-3.5 * (df_pl['Ratio_365'] - 1.0)))
+    df_pl['Supply_Profit'] = (raw_profit * 65) + 30 
+    df_pl['Supply_Profit'] = np.clip(df_pl['Supply_Profit'], 15.0, 99.5)
+    df_pl['Supply_Loss'] = 100.0 - df_pl['Supply_Profit']
+    df_pl['Profit_50_SMA'] = df_pl['Supply_Profit'].rolling(50).mean()
+    
+    current_row = df_pl.iloc[-1]
+    curr_prof, curr_loss, curr_prof_ma = current_row['Supply_Profit'], current_row['Supply_Loss'], current_row['Profit_50_SMA']
+    
+    c_pl1, c_pl2, c_pl3 = st.columns(3)
+    with c_pl1: st.markdown(f'<div class="stat-card">Supply in Profit (Moedas)<div class="stat-val" style="color: #22c55e;">{curr_prof:.2f}%</div></div>', unsafe_allow_html=True)
+    with c_pl2: st.markdown(f'<div class="stat-card">Supply in Loss (Moedas)<div class="stat-val" style="color: #ef4444;">{curr_loss:.2f}%</div></div>', unsafe_allow_html=True)
+    with c_pl3:
+        status_color = "#f59e0b" if curr_prof_ma >= 95.0 else "#38bdf8"
+        status_txt = "SOBREAQUECIDO 🌋" if curr_prof_ma >= 97.0 else "Saudável / Reset"
+        st.markdown(f'<div class="stat-card">50D SMA Profit (Gatilho Topo)<div class="stat-val" style="color: {status_color};">{curr_prof_ma:.2f}% ({status_txt})</div></div>', unsafe_allow_html=True)
+        
+    fig_pl = go.Figure()
+    df_pl_v = df_pl.tail(1100)
+    
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Profit'], name="%% Supply in Profit", line=dict(color="#22c55e", width=2)))
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Loss'], name="%% Supply in Loss", line=dict(color="#ef4444", width=2)))
+    fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Profit_50_SMA'], name="50D SMA of Profit (ITC Model)", line=dict(color="#fb923c", width=1.2, dash="dash")))
+    
+    fig_pl.add_hline(y=50.0, line_dash="dot", line_color="rgba(255,255,255,0.3)", annotation_text="50/50 Crossover Equilíbrio")
+    fig_pl.add_hline(y=97.0, line_color="#ef4444", line_width=1, annotation_text="97%% Overheating Band (Top Danger)")
+    
+    fig_pl.update_layout(template="plotly_dark", height=600, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", yaxis=dict(range=[0, 105]))
+    st.plotly_chart(fig_pl, use_container_width=True)
+
+
+# --- ABA 9: MVRV Z-SCORE ---
 elif aba == "MVRV Z-Score":
     st.header("📈 Bitcoin MVRV Z-Score (On-Chain Approximado)")
     df_mvrv = load_data("Bitcoin (BTC)")
@@ -472,7 +523,7 @@ elif aba == "MVRV Z-Score":
     st.plotly_chart(fig, use_container_width=True)
 
 
-# --- ABA 9: MÉDIAS MÓVEIS ---
+# --- ABA 10: MÉDIAS MÓVEIS ---
 elif aba == "Médias Móveis":
     st.header("📉 Weekly Moving Averages")
     asset_name = st.selectbox("Ativo", list(ASSET_TICKERS.keys()))
