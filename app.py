@@ -277,7 +277,7 @@ elif aba == "Market Cycles":
 
 
 # --- ABA 3: CYCLES (ITC ADVANCED) ---
-elif aba == "Cycles (ITC Advanced)":
+elif aba == "Cycles (ITC Advanced)"[cite: 1]:
     st.header("📈 Market Cycle ROI Comparison (ITC Advanced Standard)")
     c1, c2, c3 = st.columns(3)
     asset_name = c1.selectbox("Asset (Advanced)", list(ASSET_TICKERS.keys()))
@@ -377,7 +377,15 @@ elif aba == "Risk Metric (DCA)":
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Price'], name="Price (USD)", line=dict(color='rgba(255,255,255,0.1)'), yaxis="y2"))
     fig.add_trace(go.Scatter(x=df_risk['Date_Clean'], y=df_risk['Risk'], name="Risk Metric", line=dict(color='#3b82f6'), yaxis="y1"))
-    fig.update_layout(template="plotly_dark", height=500, paper_bgcolor="rgba(0,0,0,0)", yaxis=dict(range=[0, 1]), yaxis2=dict(type="log", overlaying="y", side="left"))
+    
+    # Layout with secondary axis gridline disabled to prevent overlaps
+    fig.update_layout(
+        template="plotly_dark", 
+        height=500, 
+        paper_bgcolor="rgba(0,0,0,0)", 
+        yaxis=dict(range=[0, 1], showgrid=True, gridcolor='rgba(255,255,255,0.05)'), 
+        yaxis2=dict(type="log", overlaying="y", side="left", showgrid=False)
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -465,7 +473,7 @@ elif aba == "Social Risk (Sentiment)":
     st.plotly_chart(fig_gauge, use_container_width=True)
 
 
-# --- ABA 8: SUPPLY IN PROFIT AND LOSS (CORRECTED TIME-WEIGHTED LOGIC) ---
+# --- ABA 8: SUPPLY IN PROFIT AND LOSS ---
 elif aba == "Supply in Profit/Loss":
     st.header("📊 Percentage of Bitcoin Circulating Supply in Profit & Loss")
     st.markdown("Quantitative analysis of global network profitability through annual moving average deviations. Band crossovers flag major market pivots.")
@@ -473,11 +481,9 @@ elif aba == "Supply in Profit/Loss":
     df_pl = load_data("Bitcoin (BTC)")
     if df_pl.empty: st.stop()
     
-    # Motor Matemático Macro: Desvio do preço face à 365D SMA (Média Base de 1 Ano)
     df_pl['365_SMA'] = df_pl['Price'].rolling(365).mean()
     df_pl['Ratio_365'] = df_pl['Price'] / df_pl['365_SMA']
     
-    # Normalização Logística e Calibração Histórica para indexação perfeita entre 15% e 100%
     raw_profit = 1 / (1 + np.exp(-3.5 * (df_pl['Ratio_365'] - 1.0)))
     df_pl['Supply_Profit'] = (raw_profit * 65) + 30 
     df_pl['Supply_Profit'] = np.clip(df_pl['Supply_Profit'], 15.0, 99.5)
@@ -500,17 +506,16 @@ elif aba == "Supply in Profit/Loss":
     elif curr_prof < 65.0: raw_bottom_signal = ((65.0 - curr_prof) / (65.0 - 50.0)) * 100
     else: raw_bottom_signal = 0.0
 
-    # 3. Time-Weighted Probability & Narrative Sync (Solving the Paradox)
+    # 3. Time-Weighted Probability & Narrative Sync
     if prob_top > 70:
         prob_bottom = 0.0
         previsao_txt = "Imminent (Market Cycle Top Window Active)"
     elif raw_bottom_signal > 70:
-        if current_month in [6, 7, 8]: # Summer Window (June, July, August)
-            # Historically, summer bottoms are zone entries with a 75% finality weight due to mandatory Q4 retests
+        if current_month in [6, 7, 8]: # Summer Window
             prob_bottom = raw_bottom_signal * 0.75  
             previsao_txt = "Local Summer Bottom Target Reached (Statistical Q4 Retest Pending)"
-        elif current_month >= 10: # Q4 Window (October, November, December)
-            prob_bottom = raw_bottom_signal # Pulls the full 100% weight in the generational macro window
+        elif current_month >= 10: # Q4 Terminal Window
+            prob_bottom = raw_bottom_signal
             previsao_txt = "Macro Cycle Bottom Confirmed (Generational Accumulation Floor)"
         else:
             prob_bottom = raw_bottom_signal * 0.50
@@ -525,7 +530,6 @@ elif aba == "Supply in Profit/Loss":
         else:
             previsao_txt = "Transitory Accumulation / Stabilization Phase"
 
-    # Painel de Métricas Avançado e Coerente
     c_pl1, c_pl2, c_pl3 = st.columns(3)
     with c_pl1:
         st.markdown(f'<div class="stat-card">Supply in Profit / Loss<div class="stat-val"><span style="color: #22c55e;">{curr_prof:.1f}%</span> / <span style="color: #ef4444;">{curr_loss:.1f}%</span></div></div>', unsafe_allow_html=True)
@@ -538,21 +542,17 @@ elif aba == "Supply in Profit/Loss":
         st.markdown(f'<div class="stat-card">Macro Timeframe Forecast<div class="stat-val" style="font-size: 18px; color: #e2e8f0; padding-top: 5px;">{previsao_txt}</div></div>', unsafe_allow_html=True)
         
     fig_pl = go.Figure()
-    df_pl_v = df_pl[df_pl['Date_Clean'] >= '2015-01-01'] # Multicycle tracking starting from 2015 accumulation floor
+    df_pl_v = df_pl[df_pl['Date_Clean'] >= '2015-01-01']
     
-    # 1. Price Curve plotted on the Secondary Y-Axis (y2) in Log Scale
+    # Primary & Secondary Axes
     fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Price'], name="BTC Price (USD)", line=dict(color="rgba(255, 255, 255, 0.22)", width=1.5), yaxis="y2"))
-    
-    # 2. On-Chain Metrics plotted on the Primary Y-Axis (y1)
     fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Profit'], name="Supply in Profit (%)", line=dict(color="#22c55e", width=2), yaxis="y1"))
     fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Supply_Loss'], name="Supply in Loss (%)", line=dict(color="#ef4444", width=2), yaxis="y1"))
     fig_pl.add_trace(go.Scatter(x=df_pl_v['Date_Clean'], y=df_pl_v['Profit_50_SMA'], name="50D SMA of Profit (Trigger Line)", line=dict(color="#fb923c", width=1.2, dash="dash"), yaxis="y1"))
     
-    # Structural Threshold Lines
     fig_pl.add_hline(y=50.0, line_dash="dot", line_color="rgba(255,255,255,0.3)", annotation_text="50/50 Crossover Equilibrium")
     fig_pl.add_hline(y=97.0, line_color="#ef4444", line_width=1, annotation_text="97% Overheating Band (Maximum Risk Zone)")
     
-    # Axis Layout Configuration
     fig_pl.update_layout(
         template="plotly_dark", height=650, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         yaxis=dict(title="Percentage (%)", range=[0, 105], showgrid=True, gridcolor='rgba(255,255,255,0.05)', side="right"),
@@ -560,6 +560,7 @@ elif aba == "Supply in Profit/Loss":
         xaxis=dict(title="Timeline (Multi-Cycle History)"), hovermode="x unified"
     )
     st.plotly_chart(fig_pl, use_container_width=True)
+
 
 # --- ABA 9: MVRV Z-SCORE ---
 elif aba == "MVRV Z-Score":
@@ -570,13 +571,23 @@ elif aba == "MVRV Z-Score":
     df_mvrv["Supply"] = df_mvrv["Date_Clean"].apply(supply_btc_approximate)
     df_mvrv["MC"] = df_mvrv["Price"] * df_mvrv["Supply"]
     df_mvrv["RC"] = df_mvrv["Price"].rolling(365).mean() * df_mvrv["Supply"]
-    df_mvrv["Z"] = (df_mvrv["MC"] - df_mvrv["RC"]) / (df_mvrv["MC"].rolling(365).std())
+    
+    # Corrected denominator: using expanding window instead of rolling 365
+    df_mvrv["Z"] = (df_mvrv["MC"] - df_mvrv["RC"]) / (df_mvrv["MC"].expanding().std())
     df_mvrv["Z_Calib"] = (df_mvrv["Z"] * 2.5) + 0.5
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_mvrv["Date_Clean"], y=df_mvrv["MC"], name="Market Cap", line=dict(color="white"), yaxis="y2"))
     fig.add_trace(go.Scatter(x=df_mvrv["Date_Clean"], y=df_mvrv["Z_Calib"], name="Z-Score", line=dict(color="#f39c12"), yaxis="y1"))
-    fig.update_layout(template="plotly_dark", height=600, paper_bgcolor="rgba(0,0,0,0)", yaxis=dict(range=[-1.5, 11]), yaxis2=dict(type="log", overlaying="y", side="left"))
+    
+    # Layout with secondary axis gridline disabled to prevent overlaps
+    fig.update_layout(
+        template="plotly_dark", 
+        height=600, 
+        paper_bgcolor="rgba(0,0,0,0)", 
+        yaxis=dict(range=[-1.5, 11], showgrid=True, gridcolor='rgba(255,255,255,0.05)'), 
+        yaxis2=dict(type="log", overlaying="y", side="left", showgrid=False)
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 
