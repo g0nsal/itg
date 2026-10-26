@@ -277,7 +277,7 @@ elif aba == "Market Cycles":
 
 
 # --- ABA 3: CYCLES (ITC ADVANCED) ---
-elif aba == "Cycles (ITC Advanced)"[cite: 1]:
+elif aba == "Cycles (ITC Advanced)":
     st.header("📈 Market Cycle ROI Comparison (ITC Advanced Standard)")
     c1, c2, c3 = st.columns(3)
     asset_name = c1.selectbox("Asset (Advanced)", list(ASSET_TICKERS.keys()))
